@@ -1,0 +1,207 @@
+---
+title: "Waffo Pancake への移行"
+description: "pancake-migrate CLI で商品・価格・Webhook・ブランディングを Waffo Pancake に移行"
+---
+
+すでに Stripe や Creem を運用していますか？ [`@waffo/pancake-migrate`](https://www.npmjs.com/package/@waffo/pancake-migrate) CLI は、商品・価格・Webhook・ブランディングを Waffo Pancake ストアにコピーします。手入力での再登録は不要です。
+
+<Note>
+移行されるのは**カタログと設定**であり、稼働中の課金ではありません。アクティブなサブスクリプション・顧客・支払い方法はそのままの場所に残ります。理由と対処については [移行されないもの](#what-does-not-migrate) を参照してください。
+</Note>
+
+<Info>
+他のプラットフォームをご利用ですか？現在 **Stripe** と **Creem** からの移行に対応しており、対応プラットフォームは順次拡大予定です。[お問い合わせ](mailto:support@waffo.ai)いただき、移行元のプラットフォームをお知らせください。優先的に対応します。
+</Info>
+
+## 概念のマッピング
+
+何かを実行する前に、既存のセットアップが Waffo Pancake とどう対応するかを確認しておきましょう。このマッピングは CLI が自動で処理します。この表は、何が起きるかを把握するためのものです。
+
+| Stripe / Creem | Waffo Pancake | 備考 |
+|---|---|---|
+| Product + Price | 1 つの商品（`prices` を含む） | Pancake は価格を商品に統合します。Stripe のマルチ通貨価格は保持されます。Creem は単一通貨です。 |
+| Recurring interval | `billingPeriod` | `week`→`weekly`、`month`→`monthly`、3 か月ごと→`quarterly`、`year`→`yearly`。 |
+| Webhook endpoint | ストア Webhook | Stripe のエンドポイントは URL + イベントタイプのマッピングとともに移行されます。（Creem の Webhook は CLI では読み取りません。） |
+| Account branding | ストアブランディング | Stripe のサポートメール + Web サイトが移行されます。 |
+| Tax behavior | `taxCategory` | Creem のカテゴリは自動的にマッピングされます。Stripe では `--tax-category` で 1 つのデフォルトを指定します。 |
+| Test / live keys | `test` / `production` | キーのプレフィックスから自動検出されます（`sk_test_`→test、`sk_live_`→production）。 |
+
+## 始める前に
+
+3 つのものが必要です。
+
+1. **Node.js 18+**
+2. **Waffo Pancake API キー** — Merchant ID（`MER_...`）と RSA 秘密鍵。[Dashboard → API & Development](https://pancake.waffo.ai/merchant/dashboard/integration) で作成できます。キーの扱い方は [SDK ガイド](/ja/integrate/skill) を参照してください。
+3. **移行元プラットフォームのキー** — Stripe Secret Key（`sk_test_...` / `sk_live_...`）または Creem API Key（`creem_test_...` / `creem_...`）。
+
+<Warning>
+移行は、キーが示す対象環境（test と live）に商品を**作成**します。何が作成されるかを正確にプレビューするため、必ず最初に `--dry-run` を実行してください。
+</Warning>
+
+## 最短ルート: インタラクティブモード
+
+```bash
+npx @waffo/pancake-migrate
+```
+
+ステップごとにガイドします。
+
+<Steps>
+  <Step title="移行元を選択">
+    Stripe または Creem。
+  </Step>
+  <Step title="移行先ストアを選択">
+    既存のストアを選ぶか、その場で新規作成します。
+  </Step>
+  <Step title="プレビュー">
+    何かが作成される前に、移行される内容を正確に確認します。
+  </Step>
+  <Step title="移行">
+    商品・価格・画像・Webhook・ブランディングがストアに作成されます。
+  </Step>
+</Steps>
+
+## スクリプトによる移行
+
+すべてをフラグで渡したい場合（CI や実行の繰り返し向け）は、移行元ごとのサブコマンドを使います。
+
+### Stripe から
+
+```bash
+# Full migration (products + webhooks + branding)
+npx @waffo/pancake-migrate stripe \
+  --stripe-key sk_test_xxx \
+  --merchant-id MER_xxx \
+  --private-key ./private.pem \
+  --store-id STO_xxx \
+  --tax-category saas
+```
+
+まず `--dry-run` でプレビューします。
+
+```bash
+npx @waffo/pancake-migrate stripe \
+  --stripe-key sk_test_xxx \
+  --merchant-id MER_xxx \
+  --private-key ./private.pem \
+  --store-id STO_xxx \
+  --tax-category saas \
+  --dry-run
+```
+
+ストアがまだない場合は、`--store-id new` を渡して移行中に作成します。
+
+```bash
+npx @waffo/pancake-migrate stripe \
+  --stripe-key sk_test_xxx \
+  --merchant-id MER_xxx \
+  --private-key ./private.pem \
+  --store-id new \
+  --tax-category saas
+```
+
+不要なステップは `--skip-products`、`--skip-webhooks`、`--skip-branding` でスキップします。
+
+```bash
+npx @waffo/pancake-migrate stripe ... --skip-webhooks --skip-branding
+```
+
+**Stripe フラグ**
+
+| Flag | 説明 |
+|---|---|
+| `--stripe-key <key>` | Stripe Secret Key（`sk_test_...` または `sk_live_...`） |
+| `--merchant-id <id>` | Pancake Merchant ID（`MER_...`） |
+| `--private-key <path>` | Pancake API 秘密鍵ファイルへのパス、または生のキー内容 |
+| `--store-id <id>` | 移行先 Store ID（`STO_...`）、または `new` で新規作成 |
+| `--tax-category <cat>` | デフォルトの税カテゴリ: `saas`、`digital_goods`、`software`、`ebook`、`online_course`、`consulting`、`professional_service` |
+| `--dry-run` | 何も作成せずにプレビュー |
+| `--yes` | 確認プロンプトをスキップ |
+| `--skip-products` | 商品の移行をスキップ |
+| `--skip-webhooks` | Webhook の移行をスキップ |
+| `--skip-branding` | ブランディングの移行をスキップ |
+
+### Creem から
+
+```bash
+npx @waffo/pancake-migrate creem \
+  --api-key creem_test_xxx \
+  --merchant-id MER_xxx \
+  --private-key ./private.pem \
+  --store-id STO_xxx
+```
+
+まずプレビューします。
+
+```bash
+npx @waffo/pancake-migrate creem \
+  --api-key creem_test_xxx \
+  --merchant-id MER_xxx \
+  --private-key ./private.pem \
+  --store-id STO_xxx \
+  --dry-run
+```
+
+**Creem フラグ**
+
+| Flag | 説明 |
+|---|---|
+| `--api-key <key>` | Creem API Key（`creem_test_...` または `creem_...`） |
+| `--merchant-id <id>` | Pancake Merchant ID（`MER_...`） |
+| `--private-key <path>` | Pancake API 秘密鍵ファイルへのパス、または生のキー内容 |
+| `--store-id <id>` | 移行先 Store ID（`STO_...`）、または `new` で新規作成 |
+| `--dry-run` | 何も作成せずにプレビュー |
+| `--yes` | 確認プロンプトをスキップ |
+
+## 移行されるもの
+
+### Stripe から
+
+| データ | 移行 |
+|---|---|
+| Products + Prices | はい — マルチ通貨、画像、説明 |
+| Billing periods | はい — `week`→`weekly`、`month`→`monthly`、3 か月ごと→`quarterly`、`year`→`yearly` |
+| Webhook endpoints | はい — URL + イベントタイプのマッピング |
+| ストアブランディング | はい — サポートメール + Web サイト |
+| Environment | 自動検出 — `sk_test_`→test、`sk_live_`→production |
+
+### Creem から
+
+| データ | 移行 |
+|---|---|
+| Products + Prices | はい — 単一通貨、画像、説明 |
+| Billing periods | はい — 毎月→`monthly`、3 か月ごと→`quarterly`、毎年→`yearly` |
+| Tax categories | はい — `saas`→`saas`、`digital-goods-service`→`digital_goods`、`ebooks`→`ebook` |
+
+## 移行されないもの {#what-does-not-migrate}
+
+これらは意図的なものです。それぞれの対処方法は次のとおりです。
+
+| 移行されないもの | 理由 | 対処 |
+|---|---|---|
+| アクティブなサブスクリプション | サブスクリプションは顧客の銀行との稼働中の課金承認であり、決済処理事業者間でコピーできません | 既存の購読者は Waffo Pancake の [チェックアウト](/ja/guides/checkout-session) で再購読します。移行期間中は旧来と新規の決済処理事業者を並行運用してください。 |
+| 顧客データ | 初回購入時に自動作成されます | 不要 — 顧客は最初の Pancake 支払い時に作成されます |
+| 支払い方法 | PCI 準拠 — カードデータは元の決済処理事業者から外に出ません | 顧客はチェックアウトで支払い情報を再入力します |
+| クーポン / 割引 | Pancake は未対応です | — |
+| チェックアウトのテーマカラー | Stripe は API でこれらを公開していません | [Dashboard → Settings → Checkout](https://pancake.waffo.ai/merchant/dashboard) で設定してください |
+
+## 移行後
+
+<Steps>
+  <Step title="カタログを確認">
+    **Dashboard → Products** を開き、価格・課金周期・画像が正しく移行されたか確認します。
+  </Step>
+  <Step title="本番に公開">
+    商品はキーが示す環境に作成されます。test に移行した場合は、各商品を [公開](/ja/integrate/skill) して本番稼働させます。
+  </Step>
+  <Step title="チェックアウトを接続">
+    アプリを Waffo Pancake の [チェックアウトセッション](/ja/guides/checkout-session) と [Webhook](/ja/guides/webhooks) に向けます。
+  </Step>
+  <Step title="並行運用してから切り替え">
+    既存の購読者がそれぞれの更新タイミングで移行する間、旧来の決済処理事業者を稼働させたままにします。Pancake チェックアウトが稼働したら、旧来の決済処理事業者での新規登録を停止します。
+  </Step>
+</Steps>
+
+<Tip>
+移行後に統合を構築しますか？ [Waffo Pancake Skill](/ja/integrate/skill) は、チェックアウト・Webhook・サブスクリプション向けの正確な `@waffo/pancake-ts` ワークフローを AI コーディングエージェントに提供します。
+</Tip>

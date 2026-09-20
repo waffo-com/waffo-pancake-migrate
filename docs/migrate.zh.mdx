@@ -1,0 +1,207 @@
+---
+title: "迁移到 Waffo Pancake"
+description: "使用 pancake-migrate CLI 将你的产品、价格、Webhook 和品牌信息迁移到 Waffo Pancake"
+---
+
+已经在用 Stripe 或 Creem？[`@waffo/pancake-migrate`](https://www.npmjs.com/package/@waffo/pancake-migrate) CLI 会把你的产品、价格、Webhook 和品牌信息复制到 Waffo Pancake 店铺——无需手动重新录入。
+
+<Note>
+迁移会迁移你的**商品目录和设置**，而非实时计费。活跃订阅、客户和支付方式仍保留在原处——参见 [哪些内容*不会*迁移](#what-does-not-migrate)，了解原因及对应处理方式。
+</Note>
+
+<Info>
+在用其他平台？我们目前支持从 **Stripe** 和 **Creem** 迁移，更多平台正在路上。[联系我们](mailto:support@waffo.ai)，告诉我们你想从哪个平台迁移——我们会优先支持。
+</Info>
+
+## 概念如何映射
+
+在运行任何命令之前，先看看你现有的配置与 Waffo Pancake 如何对应。CLI 会自动处理这些映射——下表只是让你了解会发生什么。
+
+| Stripe / Creem | Waffo Pancake | 说明 |
+|---|---|---|
+| Product + Price | 一个产品（含 `prices`） | Pancake 将价格内嵌进产品。Stripe 的多币种价格会被保留；Creem 为单币种。 |
+| Recurring interval | `billingPeriod` | `week`→`weekly`、`month`→`monthly`、每 3 个月→`quarterly`、`year`→`yearly`。 |
+| Webhook endpoint | 店铺 Webhook | Stripe 端点会连同 URL + 事件类型映射一起迁移。（CLI 不读取 Creem 的 Webhook。） |
+| Account branding | 店铺品牌信息 | Stripe 的客服邮箱 + 网站会迁移。 |
+| Tax behavior | `taxCategory` | Creem 的分类自动映射；Stripe 则通过 `--tax-category` 传入一个默认值。 |
+| Test / live keys | `test` / `production` | 根据你的密钥前缀自动识别（`sk_test_`→test，`sk_live_`→production）。 |
+
+## 开始之前
+
+你需要准备三样东西：
+
+1. **Node.js 18+**
+2. **一个 Waffo Pancake API 密钥**——即你的 Merchant ID（`MER_...`）和 RSA 私钥。在 [Dashboard → API & Development](https://pancake.waffo.ai/merchant/dashboard/integration) 中创建。密钥处理方式参见 [SDK 指南](/zh/integrate/skill)。
+3. **你的源平台密钥**——Stripe Secret Key（`sk_test_...` / `sk_live_...`）或 Creem API Key（`creem_test_...` / `creem_...`）。
+
+<Warning>
+迁移会在你的密钥所对应的目标环境（test 还是 live）中**创建**产品。请始终先用 `--dry-run` 预览将要创建的确切内容。
+</Warning>
+
+## 最快路径：交互模式
+
+```bash
+npx @waffo/pancake-migrate
+```
+
+它会一步步引导你完成：
+
+<Steps>
+  <Step title="选择来源">
+    Stripe 或 Creem。
+  </Step>
+  <Step title="选择目标店铺">
+    选择一个已有店铺，或当场创建一个新店铺。
+  </Step>
+  <Step title="预览">
+    在创建任何内容之前，准确查看将要迁移的内容。
+  </Step>
+  <Step title="迁移">
+    产品、价格、图片、Webhook 和品牌信息将在你的店铺中创建。
+  </Step>
+</Steps>
+
+## 脚本化迁移
+
+如果你更倾向于把所有内容作为 flag 传入（用于 CI，或重复执行），请使用按来源划分的子命令。
+
+### 从 Stripe 迁移
+
+```bash
+# Full migration (products + webhooks + branding)
+npx @waffo/pancake-migrate stripe \
+  --stripe-key sk_test_xxx \
+  --merchant-id MER_xxx \
+  --private-key ./private.pem \
+  --store-id STO_xxx \
+  --tax-category saas
+```
+
+先用 `--dry-run` 预览：
+
+```bash
+npx @waffo/pancake-migrate stripe \
+  --stripe-key sk_test_xxx \
+  --merchant-id MER_xxx \
+  --private-key ./private.pem \
+  --store-id STO_xxx \
+  --tax-category saas \
+  --dry-run
+```
+
+还没有店铺？传入 `--store-id new` 在迁移过程中创建一个：
+
+```bash
+npx @waffo/pancake-migrate stripe \
+  --stripe-key sk_test_xxx \
+  --merchant-id MER_xxx \
+  --private-key ./private.pem \
+  --store-id new \
+  --tax-category saas
+```
+
+用 `--skip-products`、`--skip-webhooks` 或 `--skip-branding` 跳过你不需要的步骤：
+
+```bash
+npx @waffo/pancake-migrate stripe ... --skip-webhooks --skip-branding
+```
+
+**Stripe flag**
+
+| Flag | 说明 |
+|---|---|
+| `--stripe-key <key>` | Stripe Secret Key（`sk_test_...` 或 `sk_live_...`） |
+| `--merchant-id <id>` | Pancake Merchant ID（`MER_...`） |
+| `--private-key <path>` | Pancake API 私钥文件的路径，或原始密钥内容 |
+| `--store-id <id>` | 目标 Store ID（`STO_...`），或 `new` 以创建一个 |
+| `--tax-category <cat>` | 默认税务分类：`saas`、`digital_goods`、`software`、`ebook`、`online_course`、`consulting`、`professional_service` |
+| `--dry-run` | 仅预览，不创建任何内容 |
+| `--yes` | 跳过确认提示 |
+| `--skip-products` | 跳过产品迁移 |
+| `--skip-webhooks` | 跳过 Webhook 迁移 |
+| `--skip-branding` | 跳过品牌信息迁移 |
+
+### 从 Creem 迁移
+
+```bash
+npx @waffo/pancake-migrate creem \
+  --api-key creem_test_xxx \
+  --merchant-id MER_xxx \
+  --private-key ./private.pem \
+  --store-id STO_xxx
+```
+
+先预览：
+
+```bash
+npx @waffo/pancake-migrate creem \
+  --api-key creem_test_xxx \
+  --merchant-id MER_xxx \
+  --private-key ./private.pem \
+  --store-id STO_xxx \
+  --dry-run
+```
+
+**Creem flag**
+
+| Flag | 说明 |
+|---|---|
+| `--api-key <key>` | Creem API Key（`creem_test_...` 或 `creem_...`） |
+| `--merchant-id <id>` | Pancake Merchant ID（`MER_...`） |
+| `--private-key <path>` | Pancake API 私钥文件的路径，或原始密钥内容 |
+| `--store-id <id>` | 目标 Store ID（`STO_...`），或 `new` 以创建一个 |
+| `--dry-run` | 仅预览，不创建任何内容 |
+| `--yes` | 跳过确认提示 |
+
+## 哪些内容会迁移
+
+### 从 Stripe 迁移
+
+| 数据 | 是否迁移 |
+|---|---|
+| Products + Prices | 会——多币种、图片、描述 |
+| Billing periods | 会——`week`→`weekly`、`month`→`monthly`、每 3 个月→`quarterly`、`year`→`yearly` |
+| Webhook endpoints | 会——URL + 事件类型映射 |
+| 店铺品牌信息 | 会——客服邮箱 + 网站 |
+| 环境 | 自动识别——`sk_test_`→test、`sk_live_`→production |
+
+### 从 Creem 迁移
+
+| 数据 | 是否迁移 |
+|---|---|
+| Products + Prices | 会——单币种、图片、描述 |
+| Billing periods | 会——每月→`monthly`、每三个月→`quarterly`、每年→`yearly` |
+| Tax categories | 会——`saas`→`saas`、`digital-goods-service`→`digital_goods`、`ebooks`→`ebook` |
+
+## 哪些内容*不会*迁移 {#what-does-not-migrate}
+
+这些都是有意为之——以下是各自的处理方式：
+
+| 不会迁移 | 原因 | 处理方式 |
+|---|---|---|
+| 活跃订阅 | 订阅是与客户银行之间的实时计费授权，无法在不同支付处理方之间复制 | 现有订阅者通过 Waffo Pancake [结账](/zh/guides/checkout-session) 重新订阅。过渡期内并行运行新旧支付处理方。 |
+| 客户数据 | 在首次购买时自动创建 | 无需处理——客户会在其首次 Pancake 支付时创建 |
+| 支付方式 | 出于 PCI 合规要求，卡数据绝不离开原支付处理方 | 客户在结账时重新输入支付信息 |
+| 优惠券 / 折扣 | Pancake 暂不支持 | — |
+| 结账主题颜色 | Stripe 不通过 API 暴露这些信息 | 在 [Dashboard → Settings → Checkout](https://pancake.waffo.ai/merchant/dashboard) 中设置 |
+
+## 迁移之后
+
+<Steps>
+  <Step title="核对你的商品目录">
+    打开 **Dashboard → Products**，确认价格、计费周期和图片都正确迁移过来了。
+  </Step>
+  <Step title="发布到生产环境">
+    产品会落在你的密钥所对应的环境中。如果你迁移到了 test，请对每个产品执行 [发布](/zh/integrate/skill) 以上线。
+  </Step>
+  <Step title="接入结账">
+    将你的应用指向 Waffo Pancake [结账会话](/zh/guides/checkout-session) 和 [Webhook](/zh/guides/webhooks)。
+  </Step>
+  <Step title="先并行运行，再完成切换">
+    在现有订阅者按各自续费节奏迁移期间，保持旧支付处理方处于活跃状态。Pancake 结账上线后，在旧支付处理方上停止新的注册。
+  </Step>
+</Steps>
+
+<Tip>
+迁移后正在搭建集成？[Waffo Pancake Skill](/zh/integrate/skill) 为 AI 编码代理提供了用于结账、Webhook 和订阅的精确 `@waffo/pancake-ts` 工作流。
+</Tip>

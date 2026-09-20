@@ -1,0 +1,207 @@
+---
+title: "Migrate to Waffo Pancake"
+description: "Move your products, prices, webhooks, and branding to Waffo Pancake with the pancake-migrate CLI"
+---
+
+Already running on Stripe or Creem? The [`@waffo/pancake-migrate`](https://www.npmjs.com/package/@waffo/pancake-migrate) CLI copies your products, prices, webhooks, and branding into a Waffo Pancake store — no manual re-entry.
+
+<Note>
+Migration moves your **catalog and settings**, not live billing. Active subscriptions, customers, and payment methods stay where they are — see [What does *not* migrate](#what-does-not-migrate) for why and what to do.
+</Note>
+
+<Info>
+On a different platform? We currently support migrating from **Stripe** and **Creem**, with more on the way. [Contact us](mailto:support@waffo.ai) and let us know what you're moving from — we'll prioritize it.
+</Info>
+
+## How concepts map
+
+Before you run anything, here's how your existing setup lines up with Waffo Pancake. The CLI handles this mapping for you — this table is just so you know what to expect.
+
+| Stripe / Creem | Waffo Pancake | Notes |
+|---|---|---|
+| Product + Price | One product (with `prices`) | Pancake folds price into the product. Stripe multi-currency prices are preserved; Creem is single-currency. |
+| Recurring interval | `billingPeriod` | `week`→`weekly`, `month`→`monthly`, every 3 months→`quarterly`, `year`→`yearly`. |
+| Webhook endpoint | Store webhook | Stripe endpoints migrate with URL + event-type mapping. (Creem webhooks are not read by the CLI.) |
+| Account branding | Store branding | Stripe support email + website migrate. |
+| Tax behavior | `taxCategory` | Creem categories map automatically; for Stripe you pass one default via `--tax-category`. |
+| Test / live keys | `test` / `production` | Auto-detected from your key prefix (`sk_test_`→test, `sk_live_`→production). |
+
+## Before you start
+
+You need three things:
+
+1. **Node.js 18+**
+2. **A Waffo Pancake API key** — your Merchant ID (`MER_...`) and RSA private key. Create one in [Dashboard → API & Development](https://pancake.waffo.ai/merchant/dashboard/integration). See [the SDK guide](/integrate/skill) for key handling.
+3. **Your source platform key** — a Stripe Secret Key (`sk_test_...` / `sk_live_...`) or a Creem API Key (`creem_test_...` / `creem_...`).
+
+<Warning>
+The migration **creates** products in the target environment that your key implies (test vs. live). Always do a `--dry-run` first to preview exactly what will be created.
+</Warning>
+
+## Quickest path: interactive mode
+
+```bash
+npx @waffo/pancake-migrate
+```
+
+It walks you through it step by step:
+
+<Steps>
+  <Step title="Choose source">
+    Stripe or Creem.
+  </Step>
+  <Step title="Choose target store">
+    Pick an existing store, or create a new one on the spot.
+  </Step>
+  <Step title="Preview">
+    See exactly what will be migrated before anything is created.
+  </Step>
+  <Step title="Migrate">
+    Products, prices, images, webhooks, and branding are created in your store.
+  </Step>
+</Steps>
+
+## Scripted migration
+
+If you'd rather pass everything as flags (for CI, or to repeat the run), use the per-source subcommands.
+
+### From Stripe
+
+```bash
+# Full migration (products + webhooks + branding)
+npx @waffo/pancake-migrate stripe \
+  --stripe-key sk_test_xxx \
+  --merchant-id MER_xxx \
+  --private-key ./private.pem \
+  --store-id STO_xxx \
+  --tax-category saas
+```
+
+Preview first with `--dry-run`:
+
+```bash
+npx @waffo/pancake-migrate stripe \
+  --stripe-key sk_test_xxx \
+  --merchant-id MER_xxx \
+  --private-key ./private.pem \
+  --store-id STO_xxx \
+  --tax-category saas \
+  --dry-run
+```
+
+Don't have a store yet? Pass `--store-id new` to create one during migration:
+
+```bash
+npx @waffo/pancake-migrate stripe \
+  --stripe-key sk_test_xxx \
+  --merchant-id MER_xxx \
+  --private-key ./private.pem \
+  --store-id new \
+  --tax-category saas
+```
+
+Skip steps you don't want with `--skip-products`, `--skip-webhooks`, or `--skip-branding`:
+
+```bash
+npx @waffo/pancake-migrate stripe ... --skip-webhooks --skip-branding
+```
+
+**Stripe flags**
+
+| Flag | Description |
+|---|---|
+| `--stripe-key <key>` | Stripe Secret Key (`sk_test_...` or `sk_live_...`) |
+| `--merchant-id <id>` | Pancake Merchant ID (`MER_...`) |
+| `--private-key <path>` | Path to your Pancake API private key file, or the raw key content |
+| `--store-id <id>` | Target Store ID (`STO_...`), or `new` to create one |
+| `--tax-category <cat>` | Default tax category: `saas`, `digital_goods`, `software`, `ebook`, `online_course`, `consulting`, `professional_service` |
+| `--dry-run` | Preview without creating anything |
+| `--yes` | Skip the confirmation prompt |
+| `--skip-products` | Skip product migration |
+| `--skip-webhooks` | Skip webhook migration |
+| `--skip-branding` | Skip branding migration |
+
+### From Creem
+
+```bash
+npx @waffo/pancake-migrate creem \
+  --api-key creem_test_xxx \
+  --merchant-id MER_xxx \
+  --private-key ./private.pem \
+  --store-id STO_xxx
+```
+
+Preview first:
+
+```bash
+npx @waffo/pancake-migrate creem \
+  --api-key creem_test_xxx \
+  --merchant-id MER_xxx \
+  --private-key ./private.pem \
+  --store-id STO_xxx \
+  --dry-run
+```
+
+**Creem flags**
+
+| Flag | Description |
+|---|---|
+| `--api-key <key>` | Creem API Key (`creem_test_...` or `creem_...`) |
+| `--merchant-id <id>` | Pancake Merchant ID (`MER_...`) |
+| `--private-key <path>` | Path to your Pancake API private key file, or the raw key content |
+| `--store-id <id>` | Target Store ID (`STO_...`), or `new` to create one |
+| `--dry-run` | Preview without creating anything |
+| `--yes` | Skip the confirmation prompt |
+
+## What gets migrated
+
+### From Stripe
+
+| Data | Migrated |
+|---|---|
+| Products + Prices | Yes — multi-currency, images, descriptions |
+| Billing periods | Yes — `week`→`weekly`, `month`→`monthly`, every 3 months→`quarterly`, `year`→`yearly` |
+| Webhook endpoints | Yes — URL + event-type mapping |
+| Store branding | Yes — support email + website |
+| Environment | Auto-detected — `sk_test_`→test, `sk_live_`→production |
+
+### From Creem
+
+| Data | Migrated |
+|---|---|
+| Products + Prices | Yes — single-currency, images, descriptions |
+| Billing periods | Yes — every-month→`monthly`, every-three-months→`quarterly`, every-year→`yearly` |
+| Tax categories | Yes — `saas`→`saas`, `digital-goods-service`→`digital_goods`, `ebooks`→`ebook` |
+
+## What does *not* migrate {#what-does-not-migrate}
+
+These are intentional — here's what to do about each:
+
+| Not migrated | Why | What to do |
+|---|---|---|
+| Active subscriptions | A subscription is a live billing authorization with the customer's bank; it can't be copied between processors | Existing subscribers re-subscribe through Waffo Pancake [checkout](/guides/checkout-session). Run the old and new processor in parallel during the transition. |
+| Customer data | Created automatically on first purchase | Nothing — customers are created on their first Pancake payment |
+| Payment methods | PCI compliance — card data never leaves the original processor | Customers re-enter payment details at checkout |
+| Coupons / discounts | Not supported by Pancake | — |
+| Checkout theme colors | Stripe doesn't expose these via API | Set them in [Dashboard → Settings → Checkout](https://pancake.waffo.ai/merchant/dashboard) |
+
+## After migrating
+
+<Steps>
+  <Step title="Verify your catalog">
+    Open **Dashboard → Products** and confirm prices, billing periods, and images came across correctly.
+  </Step>
+  <Step title="Publish to production">
+    Products land in the environment your key implied. If you migrated into test, [publish](/integrate/skill) each product to go live.
+  </Step>
+  <Step title="Wire up checkout">
+    Point your app at Waffo Pancake [checkout sessions](/guides/checkout-session) and [webhooks](/guides/webhooks).
+  </Step>
+  <Step title="Run in parallel, then cut over">
+    Keep your old processor active while existing subscribers migrate at their own renewal. Stop new sign-ups on the old processor once Pancake checkout is live.
+  </Step>
+</Steps>
+
+<Tip>
+Building the integration after migrating? The [Waffo Pancake Skill](/integrate/skill) gives AI coding agents the exact `@waffo/pancake-ts` workflow for checkout, webhooks, and subscriptions.
+</Tip>
