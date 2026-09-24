@@ -72,6 +72,7 @@ export interface MigrationResult {
   input: PancakeProductInput;
   success: boolean;
   pancakeProductId?: string;
+  hasProdVersion?: boolean;
   error?: string;
 }
 
@@ -82,6 +83,8 @@ export interface StripeCommandOptions {
   merchantId?: string;
   privateKey?: string;
   storeId?: string;
+  logFile?: string;
+  storeName?: string;
   taxCategory?: PancakeTaxCategory;
   dryRun?: boolean;
   yes?: boolean;
@@ -95,6 +98,7 @@ export interface CreemCommandOptions {
   merchantId?: string;
   privateKey?: string;
   storeId?: string;
+  logFile?: string;
   storeName?: string;
   dryRun?: boolean;
   yes?: boolean;

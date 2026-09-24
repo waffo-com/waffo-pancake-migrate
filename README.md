@@ -138,3 +138,27 @@ npx @waffo/pancake-migrate creem \
 ## License
 
 MIT
+
+### Migration logs and verification
+
+Every CLI run writes a private JSONL audit log under `.pancake-migrate/logs/` and prints
+its absolute path. Use `--log-file <path>` to choose a **new** file (existing files
+are never overwritten). Logs contain timestamps, target merchant/store/product IDs,
+Pancake API paths, HTTP status/request IDs when provided, and verification results.
+Request bodies, authentication headers, API keys, private keys and signatures are
+not recorded. Treat logs as private business data even though credentials are redacted.
+
+Stores are queried after creation and before any product writes. Products are queried
+after creation to check their store, name, price/currency/tax category, active status,
+billing period and production-version availability. Reads retry up to three times;
+create requests are not retried by the verifier. `VERIFIED` means read-back passed;
+`UNVERIFIED` preserves the returned product ID for investigation. A failure produces
+an incomplete summary and exit code 1, rather than a successful migration message.
+These API checks do not guarantee the dashboard UI or checkout works.
+
+Products are created as test versions; this tool does not publish them to production.
+The target dashboard URL and version availability are shown in the output.
+For non-interactive store creation, pass `--store-id new --store-name "My store"`.
+Store creation happens only after confirmation; `--dry-run` never creates a store.
+
+Run `npm test`, `npm run typecheck` and `npm run build` for local verification.

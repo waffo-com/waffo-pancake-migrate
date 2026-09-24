@@ -1,3 +1,5 @@
+import { startAudit, endAudit, audit, registerSecret, redact } from "../utils/audit.js";
+import { prepareTarget, showTarget, finishMigration } from "../utils/migration.js";
 import { Command } from "commander";
 import ora from "ora";
 import chalk from "chalk";
@@ -23,14 +25,23 @@ export function creemCommand(): Command {
     .option("--private-key <path>", "Path to Pancake API private key file")
     .option("--store-id <id>", "Target Pancake Store ID (STO_...) or 'new' to create")
     .option("--store-name <name>", "Name for new store (used with --store-id new)")
+    .option("--log-file <path>", "Write a new JSONL audit log to this path (must not exist)")
     .option("--dry-run", "Preview migration without creating anything")
     .option("--yes", "Skip confirmation prompt")
     .action(async (opts: CreemCommandOptions) => {
+      registerSecret(opts.privateKey);
+      registerSecret(opts.apiKey);
       try {
+        log.info(`Audit log: ${startAudit(opts.logFile)}`);
+        audit("migration.started", { source: "creem", merchantId: opts.merchantId });
         await runCreemMigration(opts);
       } catch (err) {
-        log.error(err instanceof Error ? err.message : String(err));
-        process.exit(1);
+        const message = redact(err instanceof Error ? err.message : String(err));
+        log.error(message);
+        audit("migration.failed", { error: message });
+        process.exitCode = 1;
+      } finally {
+        endAudit();
       }
     });
 
@@ -47,6 +58,7 @@ async function runCreemMigration(opts: CreemCommandOptions): Promise<void> {
     merchantId: string;
     privateKey: string;
     storeId: string;
+    storeName?: string;
     dryRun: boolean;
     yes: boolean;
   };
@@ -57,6 +69,7 @@ async function runCreemMigration(opts: CreemCommandOptions): Promise<void> {
       merchantId: opts.merchantId!,
       privateKey: opts.privateKey!,
       storeId: opts.storeId!,
+      storeName: opts.storeName,
       dryRun: opts.dryRun ?? false,
       yes: opts.yes ?? false,
     };
@@ -67,7 +80,7 @@ async function runCreemMigration(opts: CreemCommandOptions): Promise<void> {
   const isTestKey = config.apiKey.startsWith("creem_test_");
   const envLabel = isTestKey ? "test" : "production";
 
-  log.info(`Environment: Creem ${envLabel} → Pancake`);
+  log.info(`Environment: Creem ${envLabel} → Pancake test versions (not published)`);
   log.blank();
 
   // Read private key file if needed
@@ -80,6 +93,12 @@ async function runCreemMigration(opts: CreemCommandOptions): Promise<void> {
     const fs = await import("fs/promises");
     privateKeyContent = await fs.readFile(privateKeyContent, "utf-8");
   }
+
+  registerSecret(privateKeyContent);
+  if (config.storeId === "new" && (!config.storeName?.trim() || config.storeName.trim().length > 48)) {
+    throw new Error("--store-id new requires --store-name (1-48 characters)");
+  }
+  log.info(`Target: ${config.storeId === "new" ? `new store: ${config.storeName}` : config.storeId}`);
 
   // Phase 1: Fetch
   console.log(chalk.bold("  Phase 1: Fetching data from Creem"));
@@ -135,6 +154,10 @@ async function runCreemMigration(opts: CreemCommandOptions): Promise<void> {
   console.log(chalk.bold("  Phase 3: Executing Migration"));
   log.blank();
 
+  config.storeId = await prepareTarget(config.merchantId, privateKeyContent, config.storeId, config.storeName);
+  showTarget(config.storeId);
+  let failures = 0;
+
   const createSpinner = ora("Creating products...").start();
   const results = await createPancakeProducts({
     products,
@@ -145,11 +168,14 @@ async function runCreemMigration(opts: CreemCommandOptions): Promise<void> {
       createSpinner.text = `Creating products... (${completed}/${total})`;
     },
   });
-  createSpinner.succeed("Products created");
+  const productFailures = results.filter(result => !result.success).length;
+  failures += productFailures;
+  if (productFailures) createSpinner.fail("Some products failed creation or verification");
+  else createSpinner.succeed("Products created and verified");
   log.blank();
   renderResultsTable(results);
 
   log.blank();
-  log.success("Migration complete!");
+  finishMigration(failures);
   log.blank();
 }

@@ -15,7 +15,8 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "test": "node tests/run.mjs"
   },
   "dependencies": {
     "@inquirer/prompts": "^7.0.0",

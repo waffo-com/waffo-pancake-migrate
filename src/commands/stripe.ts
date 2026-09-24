@@ -1,3 +1,5 @@
+import { startAudit, endAudit, audit, registerSecret, redact } from "../utils/audit.js";
+import { prepareTarget, showTarget, finishMigration } from "../utils/migration.js";
 import { Command } from "commander";
 import ora from "ora";
 import chalk from "chalk";
@@ -36,18 +38,28 @@ export function stripeCommand(): Command {
     .option("--merchant-id <id>", "Waffo Pancake Merchant ID (MER_...)")
     .option("--private-key <path>", "Path to Pancake API private key file")
     .option("--store-id <id>", "Target Pancake Store ID (STO_...) or 'new' to create")
+    .option("--store-name <name>", "Name for new store (used with --store-id new)")
     .option("--tax-category <category>", "Default tax category for all products")
+    .option("--log-file <path>", "Write a new JSONL audit log to this path (must not exist)")
     .option("--dry-run", "Preview migration without creating anything")
     .option("--yes", "Skip confirmation prompt")
     .option("--skip-products", "Skip product migration")
     .option("--skip-webhooks", "Skip webhook migration")
     .option("--skip-branding", "Skip store branding migration")
     .action(async (opts: StripeCommandOptions) => {
+      registerSecret(opts.privateKey);
+      registerSecret(opts.stripeKey);
       try {
+        log.info(`Audit log: ${startAudit(opts.logFile)}`);
+        audit("migration.started", { source: "stripe", merchantId: opts.merchantId });
         await runStripeMigration(opts);
       } catch (err) {
-        log.error(err instanceof Error ? err.message : String(err));
-        process.exit(1);
+        const message = redact(err instanceof Error ? err.message : String(err));
+        log.error(message);
+        audit("migration.failed", { error: message });
+        process.exitCode = 1;
+      } finally {
+        endAudit();
       }
     });
 
@@ -59,12 +71,15 @@ async function runStripeMigration(opts: StripeCommandOptions): Promise<void> {
   console.log(chalk.bold("  Stripe → Waffo Pancake Migration"));
   log.blank();
 
+  let failures = 0;
+
   // Resolve config
   let config: {
     stripeKey: string;
     merchantId: string;
     privateKey: string;
     storeId: string;
+    storeName?: string;
     taxCategory: PancakeTaxCategory;
     dryRun: boolean;
     yes: boolean;
@@ -76,6 +91,7 @@ async function runStripeMigration(opts: StripeCommandOptions): Promise<void> {
       merchantId: opts.merchantId!,
       privateKey: opts.privateKey!,
       storeId: opts.storeId!,
+      storeName: opts.storeName,
       taxCategory: opts.taxCategory!,
       dryRun: opts.dryRun ?? false,
       yes: opts.yes ?? false,
@@ -94,7 +110,7 @@ async function runStripeMigration(opts: StripeCommandOptions): Promise<void> {
     log.blank();
   }
 
-  log.info(`Environment: Stripe ${envLabel} → Pancake ${envLabel}`);
+  log.info(`Environment: Stripe ${envLabel} → Pancake test versions (not published)`);
   log.blank();
 
   // Read private key file if needed
@@ -107,6 +123,12 @@ async function runStripeMigration(opts: StripeCommandOptions): Promise<void> {
     const fs = await import("fs/promises");
     privateKeyContent = await fs.readFile(privateKeyContent, "utf-8");
   }
+
+  registerSecret(privateKeyContent);
+  if (config.storeId === "new" && (!config.storeName?.trim() || config.storeName.trim().length > 48)) {
+    throw new Error("--store-id new requires --store-name (1-48 characters)");
+  }
+  log.info(`Target: ${config.storeId === "new" ? `new store: ${config.storeName}` : config.storeId}`);
 
   // ═══════════════════════════════════════════
   // Phase 1: Fetch all data from Stripe
@@ -141,6 +163,7 @@ async function runStripeMigration(opts: StripeCommandOptions): Promise<void> {
           : "No branding info found"
       );
     } catch {
+      failures++;
       brandingSpinner.warn("Could not fetch branding (may require Connect account)");
     }
   }
@@ -155,6 +178,7 @@ async function runStripeMigration(opts: StripeCommandOptions): Promise<void> {
         `Found ${chalk.bold(stripeWebhooks.length)} webhook endpoints`
       );
     } catch {
+      failures++;
       whSpinner.warn("Could not fetch webhooks");
     }
   }
@@ -210,12 +234,14 @@ async function runStripeMigration(opts: StripeCommandOptions): Promise<void> {
   const hasWebhooks = stripeWebhooks.length > 0;
 
   if (!hasProducts && !hasBranding && !hasWebhooks) {
-    log.info("Nothing to migrate.");
+    if (failures) finishMigration(failures);
+    else log.info("Nothing to migrate.");
     return;
   }
 
   if (config.dryRun) {
     log.info("Dry run complete. No changes were made.");
+    if (failures) finishMigration(failures);
     return;
   }
 
@@ -244,6 +270,8 @@ async function runStripeMigration(opts: StripeCommandOptions): Promise<void> {
   console.log(chalk.bold("  Phase 3: Executing Migration"));
   log.blank();
 
+  config.storeId = await prepareTarget(config.merchantId, privateKeyContent, config.storeId, config.storeName);
+  showTarget(config.storeId);
   // 3a: Products
   if (hasProducts) {
     const createSpinner = ora("Creating products...").start();
@@ -256,7 +284,10 @@ async function runStripeMigration(opts: StripeCommandOptions): Promise<void> {
         createSpinner.text = `Creating products... (${completed}/${total})`;
       },
     });
-    createSpinner.succeed("Products created");
+    const productFailures = results.filter(result => !result.success).length;
+    failures += productFailures;
+    if (productFailures) createSpinner.fail("Some products failed creation or verification");
+    else createSpinner.succeed("Products created and verified");
     log.blank();
     renderResultsTable(results);
     log.blank();
@@ -278,6 +309,7 @@ async function runStripeMigration(opts: StripeCommandOptions): Promise<void> {
         .map(([k]) => k);
       brandSpinner.succeed(`Store branding updated: ${updated.join(", ")}`);
     } else {
+      failures++;
       brandSpinner.fail(`Branding update failed: ${result.error}`);
     }
   }
@@ -302,12 +334,13 @@ async function runStripeMigration(opts: StripeCommandOptions): Promise<void> {
               : "")
         );
       } else {
+        failures++;
         whSpinner.fail(`Webhook failed: ${result.error}`);
       }
     }
   }
 
   log.blank();
-  log.success("Migration complete!");
+  finishMigration(failures);
   log.blank();
 }
