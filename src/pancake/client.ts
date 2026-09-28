@@ -1,14 +1,26 @@
+import { createHash } from 'node:crypto';
 import { WaffoPancake } from '@waffo/pancake-ts';
 import { audit, registerSecret } from '../utils/audit.js';
 
-export function pancakeClient(merchantId: string, privateKey: string) {
+export function pancakeClient(merchantId: string, privateKey: string, storeCreationId?: string) {
   registerSecret(privateKey);
   return new WaffoPancake({ merchantId, privateKey, fetch: async (url, init) => {
     const started = Date.now();
     const path = new URL(String(url)).origin + new URL(String(url)).pathname;
+    const headers = new Headers(init?.headers);
+    const pathname = new URL(String(url)).pathname;
+    // GraphQL is query-only. The gateway otherwise replays historical reads.
+    if (pathname === '/v1/graphql') headers.delete('X-Idempotency-Key');
+    // Only an explicit new operation may escape a previous create response.
+    // The same operation + original request still has a stable retry key.
+    if (pathname === '/v1/actions/store/create-store' && storeCreationId) {
+      const original = headers.get('X-Idempotency-Key');
+      if (!original) throw new Error('Missing store creation idempotency key');
+      headers.set('X-Idempotency-Key', createHash('sha256').update(JSON.stringify([original, storeCreationId])).digest('hex'));
+    }
     try {
-      const response = await globalThis.fetch(url, { ...init, signal: AbortSignal.timeout(30000) });
-      audit('api.response', { merchantId, path, status: response.status, durationMs: Date.now() - started,
+      const response = await globalThis.fetch(url, { ...init, headers, signal: AbortSignal.timeout(30000) });
+      audit('api.response', { merchantId, path, status: response.status, responseDate: response.headers.get('date'), durationMs: Date.now() - started,
         requestId: response.headers.get('x-request-id') ?? response.headers.get('x-correlation-id') ?? response.headers.get('cf-ray') });
       if (!response.ok) throw new Error(`Pancake HTTP ${response.status}: ${path}`);
       return response;

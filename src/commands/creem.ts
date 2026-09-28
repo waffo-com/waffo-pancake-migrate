@@ -25,6 +25,7 @@ export function creemCommand(): Command {
     .option("--private-key <path>", "Path to Pancake API private key file")
     .option("--store-id <id>", "Target Pancake Store ID (STO_...) or 'new' to create")
     .option("--store-name <name>", "Name for new store (used with --store-id new)")
+    .option("--store-creation-id <id>", "Explicit new-store operation ID; reuse for retries, change only for a new creation")
     .option("--log-file <path>", "Write a new JSONL audit log to this path (must not exist)")
     .option("--dry-run", "Preview migration without creating anything")
     .option("--yes", "Skip confirmation prompt")
@@ -59,6 +60,7 @@ async function runCreemMigration(opts: CreemCommandOptions): Promise<void> {
     privateKey: string;
     storeId: string;
     storeName?: string;
+    storeCreationId?: string;
     dryRun: boolean;
     yes: boolean;
   };
@@ -70,6 +72,7 @@ async function runCreemMigration(opts: CreemCommandOptions): Promise<void> {
       privateKey: opts.privateKey!,
       storeId: opts.storeId!,
       storeName: opts.storeName,
+      storeCreationId: opts.storeCreationId,
       dryRun: opts.dryRun ?? false,
       yes: opts.yes ?? false,
     };
@@ -95,6 +98,9 @@ async function runCreemMigration(opts: CreemCommandOptions): Promise<void> {
   }
 
   registerSecret(privateKeyContent);
+  if (config.storeCreationId !== undefined && (config.storeId !== "new" || !/^[A-Za-z0-9_-]{1,128}$/.test(config.storeCreationId))) {
+    throw new Error("--store-creation-id requires --store-id new and 1-128 letters, numbers, underscores or hyphens");
+  }
   if (config.storeId === "new" && (!config.storeName?.trim() || config.storeName.trim().length > 48)) {
     throw new Error("--store-id new requires --store-name (1-48 characters)");
   }
@@ -154,7 +160,7 @@ async function runCreemMigration(opts: CreemCommandOptions): Promise<void> {
   console.log(chalk.bold("  Phase 3: Executing Migration"));
   log.blank();
 
-  config.storeId = await prepareTarget(config.merchantId, privateKeyContent, config.storeId, config.storeName);
+  config.storeId = await prepareTarget(config.merchantId, privateKeyContent, config.storeId, config.storeName, config.storeCreationId);
   showTarget(config.storeId);
   let failures = 0;
 

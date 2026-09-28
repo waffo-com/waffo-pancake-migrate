@@ -2,10 +2,10 @@ import { createPancakeStore, verifyPancakeStore } from '../pancake/creator.js';
 import { audit } from './audit.js';
 import { log } from './logger.js';
 
-export async function prepareTarget(merchantId: string, privateKey: string, storeId: string, name?: string) {
+export async function prepareTarget(merchantId: string, privateKey: string, storeId: string, name?: string, storeCreationId?: string) {
   if (storeId === 'new') {
     if (!name?.trim() || name.trim().length > 48) throw new Error('New store name must contain 1-48 characters');
-    const store = await createPancakeStore(merchantId, privateKey, name.trim());
+    const store = await createPancakeStore(merchantId, privateKey, name.trim(), storeCreationId);
     log.success(`Store created and verified: ${store.name} (${store.id})`);
     return store.id;
   }

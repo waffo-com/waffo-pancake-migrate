@@ -85,6 +85,7 @@ export interface StripeCommandOptions {
   storeId?: string;
   logFile?: string;
   storeName?: string;
+  storeCreationId?: string;
   taxCategory?: PancakeTaxCategory;
   dryRun?: boolean;
   yes?: boolean;
@@ -100,6 +101,7 @@ export interface CreemCommandOptions {
   storeId?: string;
   logFile?: string;
   storeName?: string;
+  storeCreationId?: string;
   dryRun?: boolean;
   yes?: boolean;
 }

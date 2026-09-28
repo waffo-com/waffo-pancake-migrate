@@ -111,3 +111,76 @@ test('Stripe branding fetch failure produces nonzero exit even with no writes', 
   await createCli().parseAsync(['stripe','--stripe-key','sk_test_fake','--merchant-id',merchantId,'--private-key',privateKey,'--store-id',storeId,'--tax-category','saas','--skip-products','--skip-webhooks','--yes','--log-file',join(dir,'stripe-failure.jsonl')],{from:'user'});
   assert.equal(process.exitCode,1);
 });
+
+test('stale successful GraphQL response cannot validate a missing store', async () => {
+  let creates = 0;
+  globalThis.fetch = async (url, init) => {
+    if (String(url).endsWith('/create-store')) { creates++; return response({store}); }
+    const headers = new Headers(init?.headers);
+    // Reproduce the gateway replay: old reads say active; current state is absent.
+    return response({store: headers.has('X-Idempotency-Key') ? store : null});
+  };
+  await assert.rejects(createPancakeStore(merchantId, privateKey, store.name), /create response may have been replayed/);
+  assert.equal(creates, 1, 'verification failure must not silently create another store');
+});
+
+test('fresh reads observe store deletion rather than replaying the first response', async () => {
+  let exists = true;
+  const cached = new Map<string, unknown>();
+  globalThis.fetch = async (_url, init) => {
+    const headers = new Headers(init?.headers);
+    const key = headers.get('X-Idempotency-Key');
+    const current = {stores: exists ? [store] : []};
+    if (key && cached.has(key)) return response(cached.get(key));
+    if (key) cached.set(key, current);
+    return response(current);
+  };
+  assert.equal((await listPancakeStores(merchantId, privateKey)).length, 1);
+  exists = false;
+  assert.deepEqual(await listPancakeStores(merchantId, privateKey), []);
+});
+
+test('explicit creation ID survives a lost response without duplicate stores', async () => {
+  const keys: string[] = [];
+  const created = new Map<string, typeof store>();
+  let loseResponse = true;
+  globalThis.fetch = async (url, init) => {
+    const headers = new Headers(init?.headers);
+    if (String(url).endsWith('/create-store')) {
+      const key = headers.get('X-Idempotency-Key')!;
+      assert.ok(key); keys.push(key);
+      if (!created.has(key)) created.set(key, {...store, id:'STO_' + String(created.size + 4).repeat(22)});
+      if (loseResponse) { loseResponse = false; throw new Error('response lost after store was created'); }
+      return response({store:created.get(key)});
+    }
+    assert.equal(headers.has('X-Idempotency-Key'), false);
+    assert.ok(headers.get('X-Signature'), 'authentication is preserved');
+    const {variables} = JSON.parse(String(init?.body));
+    return response({store:[...created.values()].find(s => s.id === variables.id) ?? null});
+  };
+  await assert.rejects(createPancakeStore(merchantId,privateKey,store.name,'operation-a'), /response lost/);
+  const first = await createPancakeStore(merchantId,privateKey,store.name,'operation-a');
+  assert.equal(created.size, 1);
+  assert.equal(keys[0], keys[1]);
+  const second = await createPancakeStore(merchantId,privateKey,store.name,'operation-b');
+  assert.equal(created.size, 2);
+  assert.notEqual(first.id, second.id);
+  assert.notEqual(keys[1], keys[2]);
+});
+
+test('CLI forwards explicit store creation ID and keeps product retry keys stable', async () => {
+  creemMock(); const base = globalThis.fetch;
+  const storeKeys: string[] = [], productKeys: string[] = [];
+  globalThis.fetch = async (url, init) => {
+    const headers = new Headers(init?.headers);
+    if (String(url).endsWith('/create-store')) storeKeys.push(headers.get('X-Idempotency-Key')!);
+    if (String(url).endsWith('/create-product')) productKeys.push(headers.get('X-Idempotency-Key')!);
+    return base(url, init);
+  };
+  await cli('operation-a1',['--store-creation-id','a']);
+  await cli('operation-a2',['--store-creation-id','a']);
+  await cli('operation-b',['--store-creation-id','b']);
+  assert.equal(storeKeys[0],storeKeys[1]);
+  assert.notEqual(storeKeys[0],storeKeys[2]);
+  assert.equal(new Set(productKeys).size,1);
+});

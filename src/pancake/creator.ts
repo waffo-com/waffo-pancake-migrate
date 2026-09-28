@@ -118,12 +118,18 @@ export async function listPancakeStores(
 export async function createPancakeStore(
   merchantId: string,
   privateKey: string,
-  name: string
+  name: string,
+  storeCreationId?: string
 ): Promise<{ id: string; name: string }> {
-  const client = pancakeClient(merchantId, privateKey);
+  const client = pancakeClient(merchantId, privateKey, storeCreationId);
+  audit("store.creation.requested", { merchantId, name, storeCreationId });
   const { store } = await client.stores.create({ name });
-  audit("store.created", { merchantId, storeId: store.id, name });
-  await verifyPancakeStore(merchantId, privateKey, store.id, name);
+  audit("store.created", { merchantId, storeId: store.id, name, storeCreationId });
+  try {
+    await verifyPancakeStore(merchantId, privateKey, store.id, name);
+  } catch (error) {
+    throw new Error(`${error instanceof Error ? error.message : String(error)} The create response may have been replayed. Check the returned store ID first. To explicitly start a different creation, use a new --store-creation-id; reuse that ID for retries.`);
+  }
   return { id: store.id, name: store.name };
 }
 

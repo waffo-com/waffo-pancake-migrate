@@ -113,6 +113,7 @@ interface ResolvedStripeConfig {
   privateKey: string;
   storeId: string;
   storeName?: string;
+  storeCreationId?: string;
   taxCategory: PancakeTaxCategory;
   dryRun: boolean;
   yes: boolean;
@@ -161,6 +162,7 @@ export async function runInteractivePrompts(
     privateKey,
     storeId,
     storeName,
+    storeCreationId: partial.storeCreationId,
     taxCategory,
     dryRun: partial.dryRun ?? false,
     yes: partial.yes ?? false,
@@ -175,6 +177,7 @@ interface ResolvedCreemConfig {
   privateKey: string;
   storeId: string;
   storeName?: string;
+  storeCreationId?: string;
   dryRun: boolean;
   yes: boolean;
 }
@@ -211,6 +214,7 @@ export async function runCreemInteractivePrompts(
     privateKey,
     storeId,
     storeName,
+    storeCreationId: partial.storeCreationId,
     dryRun: partial.dryRun ?? false,
     yes: partial.yes ?? false,
   };

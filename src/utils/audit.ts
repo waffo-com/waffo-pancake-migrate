@@ -30,7 +30,7 @@ export function startAudit(path?: string): string {
 export function audit(event: string, fields: Record<string, unknown> = {}) {
   if (!file) return;
   // Only explicitly selected diagnostics are accepted; never serialize requests/configs.
-  const allowed = new Set(['source','merchantId','storeId','productId','sourceProductId','name','path','status','requestId','durationMs','attempt','error','hasProdVersion','verified','failed','created','message']);
+  const allowed = new Set(['responseDate','storeCreationId','source','merchantId','storeId','productId','sourceProductId','name','path','status','requestId','durationMs','attempt','error','hasProdVersion','verified','failed','created','message']);
   const safe = Object.fromEntries(Object.entries(fields).filter(([key]) => allowed.has(key)));
   appendFileSync(file, redact(JSON.stringify({ time: new Date().toISOString(), event, ...safe })) + '\n');
 }

@@ -162,3 +162,17 @@ For non-interactive store creation, pass `--store-id new --store-name "My store"
 Store creation happens only after confirmation; `--dry-run` never creates a store.
 
 Run `npm test`, `npm run typecheck` and `npm run build` for local verification.
+
+GraphQL reads omit `X-Idempotency-Key` so verification and store selection read
+current state instead of a previous successful response. Write requests retain
+idempotency protection. If store creation returns an ID that cannot be verified,
+the tool stops; it does not automatically issue another creation request.
+
+If you have checked the old store ID and intentionally want a **new** store with
+the same name, pass `--store-id new --store-name "My store"
+--store-creation-id my-store-attempt-2`. Use the **same** creation ID and store name
+when retrying that operation (including after a timeout). Change the ID only when
+you intend another creation; different IDs can create duplicate stores. IDs accept
+1–128 letters, digits, underscores or hyphens. This option affects only store
+creation, not product retry keys. Server idempotency retention limits still apply;
+this is not a permanent deduplication guarantee.
