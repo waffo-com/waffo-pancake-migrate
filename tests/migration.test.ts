@@ -6,6 +6,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createPancakeProducts, createPancakeStore, listPancakeStores } from '../src/pancake/creator.js';
 import { startAudit, audit, endAudit, registerSecret } from '../src/utils/audit.js';
+import { spinner, stopSpinners } from '../src/utils/spinner.js';
+import { PassThrough } from 'node:stream';
 import { createCli } from '../src/cli.js';
 
 const privateKey = generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({type:'pkcs8',format:'pem'}).toString();
@@ -16,7 +18,7 @@ const product = {id:productId,storeId,name:input.name,status:'active',hasProdVer
 after(() => rmSync(dir, {recursive:true,force:true}));
 const realFetch = globalThis.fetch;
 const dir = mkdtempSync(join(tmpdir(),'migration-tests-'));
-afterEach(() => { globalThis.fetch = realFetch; process.exitCode = 0; endAudit(); });
+afterEach(() => { globalThis.fetch = realFetch; process.exitCode = 0; stopSpinners(); endAudit(); });
 const response = (data: unknown) => new Response(JSON.stringify({data}), {headers:{'content-type':'application/json','x-request-id':'req-test'}});
 function mockApi(options: {missingStore?:boolean; mismatch?:boolean; delayed?:boolean; nested?:boolean; rejectCreate?:boolean; wrongPrice?:boolean; wrongPeriod?:boolean} = {}) {
   const calls: string[] = []; let reads = 0;
@@ -183,4 +185,27 @@ test('CLI forwards explicit store creation ID and keeps product retry keys stabl
   assert.equal(storeKeys[0],storeKeys[1]);
   assert.notEqual(storeKeys[0],storeKeys[2]);
   assert.equal(new Set(productKeys).size,1);
+});
+
+test('audit redacts multiline bare private keys before JSON escaping', () => {
+  const bareKey = privateKey.replace(/-----[^\n]+-----/g, '').trim();
+  const quotedSecret = 'secret-with-"quotes"\nand-newlines';
+  registerSecret(bareKey);
+  registerSecret(quotedSecret);
+  const file = startAudit(join(dir,'multiline-secret.jsonl'));
+  audit('test', { error: `failure: ${bareKey} ${quotedSecret}`, message: { privateKey } });
+  const contents = readFileSync(file,'utf8');
+  for (const line of bareKey.split('\n')) assert.equal(contents.includes(line),false);
+  const entry = JSON.parse(contents.trim().split('\n').at(-1)!);
+  assert.equal(entry.error,'failure: [REDACTED] [REDACTED]');
+  assert.equal(entry.message,undefined);
+});
+
+test('CLI exception stops enabled spinner timers before returning failure', async () => {
+  const stream = new PassThrough(); stream.resume();
+  const indicator = spinner({text:'request in progress', stream, isEnabled:true, discardStdin:false, hideCursor:false}).start();
+  assert.equal(indicator.isSpinning,true);
+  await cli('invalid-operation',['--store-creation-id','invalid operation']);
+  assert.equal(process.exitCode,1);
+  assert.equal(indicator.isSpinning,false);
 });

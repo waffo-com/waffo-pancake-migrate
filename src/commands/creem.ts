@@ -1,7 +1,7 @@
 import { startAudit, endAudit, audit, registerSecret, redact } from "../utils/audit.js";
 import { prepareTarget, showTarget, finishMigration } from "../utils/migration.js";
 import { Command } from "commander";
-import ora from "ora";
+import { spinner as ora, stopSpinners } from "../utils/spinner.js";
 import chalk from "chalk";
 import { fetchCreemProducts } from "../creem/fetcher.js";
 import { mapCreemProducts } from "../creem/mapper.js";
@@ -37,11 +37,13 @@ export function creemCommand(): Command {
         audit("migration.started", { source: "creem", merchantId: opts.merchantId });
         await runCreemMigration(opts);
       } catch (err) {
+        stopSpinners();
         const message = redact(err instanceof Error ? err.message : String(err));
         log.error(message);
         audit("migration.failed", { error: message });
         process.exitCode = 1;
       } finally {
+        stopSpinners();
         endAudit();
       }
     });

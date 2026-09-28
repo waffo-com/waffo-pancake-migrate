@@ -1,5 +1,5 @@
 import { input, password, select } from "@inquirer/prompts";
-import ora from "ora";
+import { spinner as ora } from "../utils/spinner.js";
 import { listPancakeStores } from "../pancake/creator.js";
 import { registerSecret } from "../utils/audit.js";
 import type {

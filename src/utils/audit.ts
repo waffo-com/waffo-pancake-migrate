@@ -31,7 +31,11 @@ export function audit(event: string, fields: Record<string, unknown> = {}) {
   if (!file) return;
   // Only explicitly selected diagnostics are accepted; never serialize requests/configs.
   const allowed = new Set(['responseDate','storeCreationId','source','merchantId','storeId','productId','sourceProductId','name','path','status','requestId','durationMs','attempt','error','hasProdVersion','verified','failed','created','message']);
-  const safe = Object.fromEntries(Object.entries(fields).filter(([key]) => allowed.has(key)));
-  appendFileSync(file, redact(JSON.stringify({ time: new Date().toISOString(), event, ...safe })) + '\n');
+  // Redact before JSON escaping, which otherwise hides newlines/quotes in secrets.
+  // Diagnostics are scalar values only: never accept nested request/config objects.
+  const safe = Object.fromEntries(Object.entries(fields)
+    .filter(([key, value]) => allowed.has(key) && (value === null || ['string', 'number', 'boolean'].includes(typeof value)))
+    .map(([key, value]) => [key, typeof value === 'string' ? redact(value) : value]));
+  appendFileSync(file, JSON.stringify({ time: new Date().toISOString(), event: redact(event), ...safe }) + '\n');
 }
 export function endAudit() { file = undefined; secrets.clear(); }
