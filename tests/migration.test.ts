@@ -7,6 +7,8 @@ import { join } from 'node:path';
 import { createPancakeProducts, createPancakeStore, listPancakeStores } from '../src/pancake/creator.js';
 import { startAudit, audit, endAudit, registerSecret } from '../src/utils/audit.js';
 import { spinner, stopSpinners } from '../src/utils/spinner.js';
+import { sourceStep, validateCreemPage } from '../src/utils/source-diagnostics.js';
+import { fetchStripeProducts, fetchStripeWebhooks } from '../src/stripe/fetcher.js';
 import { PassThrough } from 'node:stream';
 import { createCli } from '../src/cli.js';
 
@@ -112,6 +114,10 @@ test('Stripe branding fetch failure produces nonzero exit even with no writes', 
   globalThis.fetch = async () => new Response(JSON.stringify({error:{message:'denied',type:'invalid_request_error'}}),{status:400,headers:{'content-type':'application/json'}});
   await createCli().parseAsync(['stripe','--stripe-key','sk_test_fake','--merchant-id',merchantId,'--private-key',privateKey,'--store-id',storeId,'--tax-category','saas','--skip-products','--skip-webhooks','--yes','--log-file',join(dir,'stripe-failure.jsonl')],{from:'user'});
   assert.equal(process.exitCode,1);
+  const log = readFileSync(join(dir,'stripe-failure.jsonl'),'utf8');
+  assert.match(log, /source.failed/);
+  assert.match(log, /\"step\":\"branding\"/);
+  assert.match(log, /\"status\":400/);
 });
 
 test('stale successful GraphQL response cannot validate a missing store', async () => {
@@ -208,4 +214,93 @@ test('CLI exception stops enabled spinner timers before returning failure', asyn
   await cli('invalid-operation',['--store-creation-id','invalid operation']);
   assert.equal(process.exitCode,1);
   assert.equal(indicator.isSpinning,false);
+});
+
+test('Creem source logs actual versions, pages and counts without product payloads', async () => {
+  creemMock();
+  const log = await cli('source-success', ['--dry-run']);
+  const events = log.trim().split('\n').map(line => JSON.parse(line));
+  const started = events.find(event => event.event === 'source.started');
+  assert.equal(started.sdkVersion, '1.4.4');
+  assert.equal(started.toolVersion, '0.2.0');
+  assert.ok(started.nodeVersion.startsWith('v'));
+  assert.ok(events.some(event => event.event === 'source.page' && event.page === 1 && event.count === 1));
+  assert.ok(events.some(event => event.event === 'source.completed' && event.count === 1));
+  assert.equal(log.includes('prod_source'), false);
+  assert.equal(log.includes('creem_fake'), false);
+});
+
+test('Creem malformed HTTP response logs shape and request ID, never the body', async () => {
+  globalThis.fetch = async () => new Response(JSON.stringify({result:{email:'private@example.com'},next:'secret-next-url'}), {
+    headers: {'content-type':'application/json', 'x-request-id':'req-shape'},
+  });
+  const log = await cli('source-shape', ['--dry-run']);
+  assert.equal(process.exitCode, 1);
+  assert.match(log, /response_shape/);
+  assert.match(log, /items:undefined/);
+  assert.match(log, /req-shape/);
+  assert.equal(log.includes('private@example.com'), false);
+  assert.equal(log.includes('secret-next-url'), false);
+});
+
+test('Creem authorization failure logs actionable status without SDK response body', async () => {
+  globalThis.fetch = async () => new Response(JSON.stringify({message:'secret-response-body creem_fake'}), {
+    status:401, headers:{'content-type':'application/json','x-request-id':'req-denied'},
+  });
+  const log = await cli('source-auth', ['--dry-run']);
+  assert.equal(process.exitCode,1);
+  assert.match(log,/authentication_or_permission/);
+  assert.match(log,/"status":401/);
+  assert.match(log,/req-denied/);
+  assert.equal(log.includes('secret-response-body'),false);
+  assert.equal(log.includes('creem_fake'),false);
+});
+
+test('iterator-shaped SDK result and looping pagination produce diagnostic errors', async () => {
+  const file = startAudit(join(dir,'iterator-shape.jsonl'));
+  for (const value of [{result:{items:[]},next:()=>{}}, {items:[],pagination:{nextPage:1}}]) {
+    await assert.rejects(sourceStep('creem','products',async () => validateCreemPage(value,1)),/response_shape/);
+  }
+  const log = readFileSync(file,'utf8');
+  assert.match(log,/items:undefined/);
+  assert.match(log,/next:function/);
+});
+
+test('network and timeout diagnostics omit arbitrary SDK error text', async () => {
+  const file = startAudit(join(dir,'source-network.jsonl'));
+  for (const name of ['ConnectionError','RequestTimeoutError']) {
+    await assert.rejects(sourceStep('creem','products',async () => {
+      throw Object.assign(new Error('private response payload'), {name});
+    }), /network|timeout/);
+  }
+  const log = readFileSync(file,'utf8');
+  assert.match(log,/"category":"network"/);
+  assert.match(log,/"category":"timeout"/);
+  assert.equal(log.includes('private response payload'),false);
+});
+
+test('Stripe price failure is attributed to prices and retains HTTP request ID', async () => {
+  const file = startAudit(join(dir,'stripe-prices.jsonl'));
+  globalThis.fetch = async url => {
+    const path = url instanceof Request ? url.url : String(url);
+    return path.includes('/products')
+      ? new Response(JSON.stringify({object:'list',data:[],has_more:false}),{headers:{'content-type':'application/json'}})
+      : new Response(JSON.stringify({error:{type:'invalid_request_error',code:'permission_denied',message:'private payload'}}),{status:403,headers:{'content-type':'application/json','request-id':'req-prices'}});
+  };
+  await assert.rejects(fetchStripeProducts('sk_test_fake'),/prices failed.*403/);
+  const log = readFileSync(file,'utf8');
+  assert.match(log,/req-prices/);
+  assert.match(log,/"step":"prices"/);
+  assert.match(log,/permission_denied/);
+  assert.equal(log.includes('private payload'),false);
+});
+
+test('Stripe webhook failure has its own diagnostic step', async () => {
+  const file = startAudit(join(dir,'stripe-webhooks.jsonl'));
+  globalThis.fetch = async () => new Response(JSON.stringify({error:{type:'invalid_request_error',message:'hidden webhook URL'}}),{status:401,headers:{'content-type':'application/json'}});
+  await assert.rejects(fetchStripeWebhooks('sk_test_fake'),/webhooks failed/);
+  const log = readFileSync(file,'utf8');
+  assert.match(log,/"step":"webhooks"/);
+  assert.match(log,/authentication_or_permission/);
+  assert.equal(log.includes('hidden webhook URL'),false);
 });

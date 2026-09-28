@@ -145,6 +145,14 @@ Every CLI run writes a private JSONL audit log under `.pancake-migrate/logs/` an
 its absolute path. Use `--log-file <path>` to choose a **new** file (existing files
 are never overwritten). Logs contain timestamps, target merchant/store/product IDs,
 Pancake API paths, HTTP status/request IDs when provided, and verification results.
+Source reads also record the tool/Node/installed SDK versions, the operation
+(products, prices, branding or webhooks), duration and item counts. Creem reads
+include page numbers and a value-free response shape to diagnose SDK/schema
+mismatches such as `result.items is not iterable`. Source failures are classified
+as authentication/permission, HTTP, rate limit, timeout, network or response-shape
+errors where the SDK provides enough evidence; otherwise they are marked
+`sdk_or_network`. Raw SDK error messages and response
+bodies are omitted because they may contain private data.
 Request bodies, authentication headers, API keys, private keys and signatures are
 not recorded. Treat logs as private business data even though credentials are redacted.
 

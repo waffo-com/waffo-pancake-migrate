@@ -30,7 +30,7 @@ export function startAudit(path?: string): string {
 export function audit(event: string, fields: Record<string, unknown> = {}) {
   if (!file) return;
   // Only explicitly selected diagnostics are accepted; never serialize requests/configs.
-  const allowed = new Set(['responseDate','storeCreationId','source','merchantId','storeId','productId','sourceProductId','name','path','status','requestId','durationMs','attempt','error','hasProdVersion','verified','failed','created','message']);
+  const allowed = new Set(['requestNumber','step','sdkVersion','toolVersion','nodeVersion','category','code','page','count','responseShape','responseDate','storeCreationId','source','merchantId','storeId','productId','sourceProductId','name','path','status','requestId','durationMs','attempt','error','hasProdVersion','verified','failed','created','message']);
   // Redact before JSON escaping, which otherwise hides newlines/quotes in secrets.
   // Diagnostics are scalar values only: never accept nested request/config objects.
   const safe = Object.fromEntries(Object.entries(fields)

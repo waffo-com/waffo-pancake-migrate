@@ -170,8 +170,9 @@ async function runStripeMigration(opts: StripeCommandOptions): Promise<void> {
           ? `Found branding: ${fields.join(", ")}`
           : "No branding info found"
       );
-    } catch {
+    } catch (error) {
       failures++;
+      log.warn(error instanceof Error ? error.message : "Source read failed; see audit log");
       brandingSpinner.warn("Could not fetch branding (may require Connect account)");
     }
   }
@@ -185,8 +186,9 @@ async function runStripeMigration(opts: StripeCommandOptions): Promise<void> {
       whSpinner.succeed(
         `Found ${chalk.bold(stripeWebhooks.length)} webhook endpoints`
       );
-    } catch {
+    } catch (error) {
       failures++;
+      log.warn(error instanceof Error ? error.message : "Source read failed; see audit log");
       whSpinner.warn("Could not fetch webhooks");
     }
   }
