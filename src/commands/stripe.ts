@@ -1,5 +1,15 @@
-import { startAudit, endAudit, audit, registerSecret, redact } from "../utils/audit.js";
-import { prepareTarget, showTarget, finishMigration } from "../utils/migration.js";
+import {
+  startAudit,
+  endAudit,
+  audit,
+  registerSecret,
+  redact,
+} from "../utils/audit.js";
+import {
+  prepareTarget,
+  showTarget,
+  finishMigration,
+} from "../utils/migration.js";
 import { Command } from "commander";
 import { spinner as ora, stopSpinners } from "../utils/spinner.js";
 import chalk from "chalk";
@@ -17,7 +27,10 @@ import {
 import { runInteractivePrompts } from "../prompts/interactive.js";
 import { renderPreviewTable, renderResultsTable } from "../utils/table.js";
 import { log } from "../utils/logger.js";
-import type { StripeCommandOptions, PancakeTaxCategory } from "../utils/types.js";
+import type {
+  StripeCommandOptions,
+  PancakeTaxCategory,
+} from "../utils/types.js";
 
 function isFullySpecified(opts: StripeCommandOptions): boolean {
   return !!(
@@ -33,15 +46,35 @@ export function stripeCommand(): Command {
   const cmd = new Command("stripe");
 
   cmd
-    .description("Migrate products, webhooks, and branding from Stripe to Waffo Pancake")
-    .option("--stripe-key <key>", "Stripe Secret Key (sk_test_... or sk_live_...)")
+    .description(
+      "Migrate products, webhooks, and branding from Stripe to Waffo Pancake"
+    )
+    .option(
+      "--stripe-key <key>",
+      "Stripe Secret Key (sk_test_... or sk_live_...)"
+    )
     .option("--merchant-id <id>", "Waffo Pancake Merchant ID (MER_...)")
     .option("--private-key <path>", "Path to Pancake API private key file")
-    .option("--store-id <id>", "Target Pancake Store ID (STO_...) or 'new' to create")
-    .option("--store-name <name>", "Name for new store (used with --store-id new)")
-    .option("--tax-category <category>", "Default tax category for all products")
-    .option("--store-creation-id <id>", "Explicit new-store operation ID; reuse for retries, change only for a new creation")
-    .option("--log-file <path>", "Write a new JSONL audit log to this path (must not exist)")
+    .option(
+      "--store-id <id>",
+      "Target Pancake Store ID (STO_...) or 'new' to create"
+    )
+    .option(
+      "--store-name <name>",
+      "Name for new store (used with --store-id new)"
+    )
+    .option(
+      "--tax-category <category>",
+      "Default tax category for all products"
+    )
+    .option(
+      "--store-creation-id <id>",
+      "Explicit new-store operation ID; reuse for retries, change only for a new creation"
+    )
+    .option(
+      "--log-file <path>",
+      "Write a new JSONL audit log to this path (must not exist)"
+    )
     .option("--dry-run", "Preview migration without creating anything")
     .option("--yes", "Skip confirmation prompt")
     .option("--skip-products", "Skip product migration")
@@ -52,11 +85,16 @@ export function stripeCommand(): Command {
       registerSecret(opts.stripeKey);
       try {
         log.info(`Audit log: ${startAudit(opts.logFile)}`);
-        audit("migration.started", { source: "stripe", merchantId: opts.merchantId });
+        audit("migration.started", {
+          source: "stripe",
+          merchantId: opts.merchantId,
+        });
         await runStripeMigration(opts);
       } catch (err) {
         stopSpinners();
-        const message = redact(err instanceof Error ? err.message : String(err));
+        const message = redact(
+          err instanceof Error ? err.message : String(err)
+        );
         log.error(message);
         audit("migration.failed", { error: message });
         process.exitCode = 1;
@@ -115,7 +153,9 @@ async function runStripeMigration(opts: StripeCommandOptions): Promise<void> {
     log.blank();
   }
 
-  log.info(`Environment: Stripe ${envLabel} → Pancake test versions (not published)`);
+  log.info(
+    `Environment: Stripe ${envLabel} → Pancake test versions (not published)`
+  );
   log.blank();
 
   // Read private key file if needed
@@ -130,13 +170,24 @@ async function runStripeMigration(opts: StripeCommandOptions): Promise<void> {
   }
 
   registerSecret(privateKeyContent);
-  if (config.storeCreationId !== undefined && (config.storeId !== "new" || !/^[A-Za-z0-9_-]{1,128}$/.test(config.storeCreationId))) {
-    throw new Error("--store-creation-id requires --store-id new and 1-128 letters, numbers, underscores or hyphens");
+  if (
+    config.storeCreationId !== undefined &&
+    (config.storeId !== "new" ||
+      !/^[A-Za-z0-9_-]{1,128}$/.test(config.storeCreationId))
+  ) {
+    throw new Error(
+      "--store-creation-id requires --store-id new and 1-128 letters, numbers, underscores or hyphens"
+    );
   }
-  if (config.storeId === "new" && (!config.storeName?.trim() || config.storeName.trim().length > 48)) {
+  if (
+    config.storeId === "new" &&
+    (!config.storeName?.trim() || config.storeName.trim().length > 48)
+  ) {
     throw new Error("--store-id new requires --store-name (1-48 characters)");
   }
-  log.info(`Target: ${config.storeId === "new" ? `new store: ${config.storeName}` : config.storeId}`);
+  log.info(
+    `Target: ${config.storeId === "new" ? `new store: ${config.storeName}` : config.storeId}`
+  );
 
   // ═══════════════════════════════════════════
   // Phase 1: Fetch all data from Stripe
@@ -172,8 +223,14 @@ async function runStripeMigration(opts: StripeCommandOptions): Promise<void> {
       );
     } catch (error) {
       failures++;
-      log.warn(error instanceof Error ? error.message : "Source read failed; see audit log");
-      brandingSpinner.warn("Could not fetch branding (may require Connect account)");
+      log.warn(
+        error instanceof Error
+          ? error.message
+          : "Source read failed; see audit log"
+      );
+      brandingSpinner.warn(
+        "Could not fetch branding (may require Connect account)"
+      );
     }
   }
 
@@ -188,7 +245,11 @@ async function runStripeMigration(opts: StripeCommandOptions): Promise<void> {
       );
     } catch (error) {
       failures++;
-      log.warn(error instanceof Error ? error.message : "Source read failed; see audit log");
+      log.warn(
+        error instanceof Error
+          ? error.message
+          : "Source read failed; see audit log"
+      );
       whSpinner.warn("Could not fetch webhooks");
     }
   }
@@ -205,7 +266,9 @@ async function runStripeMigration(opts: StripeCommandOptions): Promise<void> {
   if (!opts.skipProducts && stripeProducts.length > 0) {
     mappedProducts = mapProducts(stripeProducts, config.taxCategory);
     console.log(
-      chalk.underline(`Products (${mappedProducts.products.length} to create, ${mappedProducts.skipped.length} skipped):`)
+      chalk.underline(
+        `Products (${mappedProducts.products.length} to create, ${mappedProducts.skipped.length} skipped):`
+      )
     );
     log.blank();
     renderPreviewTable(
@@ -222,25 +285,34 @@ async function runStripeMigration(opts: StripeCommandOptions): Promise<void> {
   // Branding preview
   if (branding && (branding.supportEmail || branding.websiteUrl)) {
     console.log(chalk.underline("Store branding:"));
-    if (branding.supportEmail) log.info(`  Support email: ${branding.supportEmail}`);
+    if (branding.supportEmail)
+      log.info(`  Support email: ${branding.supportEmail}`);
     if (branding.websiteUrl) log.info(`  Website: ${branding.websiteUrl}`);
-    if (branding.businessName) log.info(`  Business name: ${branding.businessName} (info only, not written)`);
+    if (branding.businessName)
+      log.info(
+        `  Business name: ${branding.businessName} (info only, not written)`
+      );
     log.blank();
   }
 
   // Webhooks preview
   if (stripeWebhooks.length > 0) {
-    console.log(chalk.underline(`Webhooks (${stripeWebhooks.length} endpoints):`));
+    console.log(
+      chalk.underline(`Webhooks (${stripeWebhooks.length} endpoints):`)
+    );
     for (const wh of stripeWebhooks) {
       log.info(`  ${wh.url}`);
-      log.dim(`    Events: ${wh.enabledEvents.length} subscribed, status: ${wh.status}`);
+      log.dim(
+        `    Events: ${wh.enabledEvents.length} subscribed, status: ${wh.status}`
+      );
     }
     log.blank();
   }
 
   // Nothing to do?
   const hasProducts = mappedProducts && mappedProducts.products.length > 0;
-  const hasBranding = branding && (branding.supportEmail || branding.websiteUrl);
+  const hasBranding =
+    branding && (branding.supportEmail || branding.websiteUrl);
   const hasWebhooks = stripeWebhooks.length > 0;
 
   if (!hasProducts && !hasBranding && !hasWebhooks) {
@@ -280,7 +352,13 @@ async function runStripeMigration(opts: StripeCommandOptions): Promise<void> {
   console.log(chalk.bold("  Phase 3: Executing Migration"));
   log.blank();
 
-  config.storeId = await prepareTarget(config.merchantId, privateKeyContent, config.storeId, config.storeName, config.storeCreationId);
+  config.storeId = await prepareTarget(
+    config.merchantId,
+    privateKeyContent,
+    config.storeId,
+    config.storeName,
+    config.storeCreationId
+  );
   showTarget(config.storeId);
   // 3a: Products
   if (hasProducts) {
@@ -294,9 +372,10 @@ async function runStripeMigration(opts: StripeCommandOptions): Promise<void> {
         createSpinner.text = `Creating products... (${completed}/${total})`;
       },
     });
-    const productFailures = results.filter(result => !result.success).length;
+    const productFailures = results.filter((result) => !result.success).length;
     failures += productFailures;
-    if (productFailures) createSpinner.fail("Some products failed creation or verification");
+    if (productFailures)
+      createSpinner.fail("Some products failed creation or verification");
     else createSpinner.succeed("Products created and verified");
     log.blank();
     renderResultsTable(results);
@@ -340,7 +419,9 @@ async function runStripeMigration(opts: StripeCommandOptions): Promise<void> {
         whSpinner.succeed(
           `Webhook set: ${result.events.length} events mapped` +
             (result.unmappedEvents.length > 0
-              ? chalk.yellow(` (${result.unmappedEvents.length} Stripe-only events skipped)`)
+              ? chalk.yellow(
+                  ` (${result.unmappedEvents.length} Stripe-only events skipped)`
+                )
               : "")
         );
       } else {

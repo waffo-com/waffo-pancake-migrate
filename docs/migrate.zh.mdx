@@ -205,3 +205,30 @@ npx @waffo/pancake-migrate creem \
 <Tip>
 迁移后正在搭建集成？[Waffo Pancake Skill](/zh/integrate/skill) 为 AI 编码代理提供了用于结账、Webhook 和订阅的精确 `@waffo/pancake-ts` 工作流。
 </Tip>
+
+## Dodo Payments
+
+Dodo 支持商品目录和价格迁移，复用现有 Waffo 商品创建器。
+私下配置 `DODO_PAYMENTS_API_KEY` 后，先预览：
+
+```bash
+npx @waffo/pancake-migrate dodo --environment test --dry-run
+```
+
+实际迁移时添加 `--merchant-id MER_xxx --private-key ./private.pem --store-id STO_xxx`，
+检查预览并确认后才写入。读取 Dodo 生产商品时显式使用 `--environment live`，
+不会根据密钥前缀推断环境。预览不需要 Waffo 凭据。
+`--store-id new --store-name "My store"` 可在确认后创建店铺。
+导入的商品为测试版本，不会自动发布生产版本。
+
+读取所有未归档商品的分页和完整价格详情，支持固定价格的一次性商品和订阅。
+计费周期使用 `payment_frequency_*`（周、月、季度、年），不使用 `subscription_period_*`。
+金额按 ISO 币种最小单位换算。来源 ID、税务及订阅时长设置保存在 metadata，
+结果输出 Dodo → Waffo 商品 ID 对照。
+
+税类明确映射：saas → saas、digital_products → digital_goods、e_book → ebook、
+edtech → online_course。含税或未指定税务语义的价格需审阅目标行为，并使用
+`--acknowledge-tax-semantics`；该参数不会替 Waffo 配置含税行为。
+订阅总时长只保留在 metadata。不支持的价格、周期、税类、折扣、试用、自定金额、
+本地化/购买力平价价格及附加项会明确跳过，退出码为 1。
+客户、已有订阅、支付方式、Webhook、品牌及积分履约不在本次范围内，网站积分需独立接入。

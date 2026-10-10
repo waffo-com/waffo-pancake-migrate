@@ -1,6 +1,6 @@
 # @waffo/pancake-migrate
 
-Migrate products and settings from **Stripe** or **Creem** to [Waffo Pancake](https://waffo.ai).
+Migrate products and settings from **Stripe**, **Creem**, or **Dodo Payments** to [Waffo Pancake](https://waffo.ai).
 
 ## Quick Start
 
@@ -10,7 +10,7 @@ npx @waffo/pancake-migrate
 
 Interactive mode guides you through:
 
-1. **Choose source** — Stripe or Creem
+1. **Choose source** — Stripe, Creem, or Dodo Payments
 2. **Choose target store** — existing store or create a new one
 3. **Preview** — see what will be migrated before confirming
 4. **Migrate** — products, prices, images, webhooks, and branding
@@ -57,6 +57,21 @@ npx @waffo/pancake-migrate stripe ... --skip-webhooks --skip-branding
 
 ### Creem
 
+For local tests, fill `CREEM_API_KEY` with a Creem test-mode key in `.env.test`.
+Dodo and Creem share `WAFFO_MERCHANT_ID`, `WAFFO_PRIVATE_KEY_PATH` and
+`WAFFO_STORE_ID`. The existing Creem workflow asks for Waffo credentials even
+for preview; missing values are prompted interactively. Environment selection
+continues to use the existing Creem key-prefix logic, so use a `creem_test_` key
+for test runs. CLI flags override these environment values.
+
+```bash
+npm run creem:preview
+npm run creem:migrate
+```
+
+These shortcuts use native `--env-file` and require Node.js 20.6+.
+
+
 ```bash
 npx @waffo/pancake-migrate creem \
   --api-key creem_test_xxx \
@@ -72,6 +87,120 @@ npx @waffo/pancake-migrate creem \
   --store-id STO_xxx \
   --dry-run
 ```
+
+### Dodo Payments
+
+For local test runs, copy `.env.test.example` to `.env.test` if it does not already exist,
+then fill in `DODO_PAYMENTS_API_KEY`. Add `WAFFO_MERCHANT_ID`,
+`WAFFO_PRIVATE_KEY_PATH` (an absolute path, not key contents), and `WAFFO_STORE_ID`
+when ready to write. `.env.test` and its local variants are ignored by Git; only the
+empty `.env.test.example` template belongs in the repository.
+
+```bash
+npm run dodo:preview  # Build and preview; no Waffo writes
+npm run dodo:migrate  # Build, preview and ask for confirmation before writing
+```
+
+These local shortcuts require **Node.js 20.6+** for native `--env-file` loading.
+Both explicitly select Dodo **test** mode (`https://test.dodopayments.com`).
+`DODO_PAYMENTS_BASE_URL` is not used; the endpoint comes from `--environment test|live`
+or the interactive environment selection. No environment-selection variable is needed in `.env.test`. They do not supply `--yes` or acknowledge
+tax semantics automatically. If needed after review, use
+`npm run dodo:migrate -- --acknowledge-tax-semantics`.
+The ordinary CLI still supports Node.js 18+ with exported environment variables
+or interactive prompts; it does not automatically load `.env.test`. Explicit CLI
+options take precedence over environment variables. `npm test` remains an offline
+mock test suite and never loads this credential file.
+
+
+Build this checkout with `npm run build`, then preview using a Dodo Products Read
+key supplied privately through `DODO_PAYMENTS_API_KEY` (or a hidden interactive
+prompt). Do not put real keys in examples, shell history, logs or fixtures.
+
+```bash
+# Source-only preview; DODO_PAYMENTS_API_KEY is already set securely.
+node dist/index.js dodo --environment test --dry-run
+
+# Create test-version products after reviewing the preview and confirming the target.
+node dist/index.js dodo --environment test \
+  --merchant-id MER_xxx \
+  --private-key /absolute/path/to/private.pem \
+  --store-id STO_xxx
+```
+
+`--environment test|live` explicitly selects the Dodo API; key prefixes are never
+used to infer it. Interactive mode asks for the environment. Non-interactive
+writes require all destination credentials and `--yes`. Destination products are
+created through the existing Waffo creator and verified by read-back; neither
+Dodo mode publishes Waffo products to production. The final output and audit log
+include each Dodo → Waffo product ID mapping, including IDs returned by an
+unverified creation. Check those IDs before retrying.
+
+Only product catalog and pricing are in scope. The reader requests unarchived
+products with zero-based pages of 100, continues to an empty page, and fetches
+full details for every ID (list prices are summaries).
+
+| Dodo field | Waffo behavior |
+|---|---|
+| name, description, image | name, description, image media |
+| `one_time_price` | One-time product |
+| `recurring_price` | Subscription; frequency comes from `payment_frequency_*` |
+| Frequency | 1 week → weekly; 1 month → monthly; 3 months → quarterly; 12 months or 1 year → yearly |
+| Integer price | ISO minor-unit conversion, e.g. USD 1600 → 16.00, JPY 1600 → 1600, KWD 1600 → 1.600 |
+| Tax categories | saas → saas; digital_products → digital_goods; e_book → ebook; edtech → online_course |
+| Source metadata | Copied; reserved `_dodo*` fields record the source ID and tax/duration settings |
+| `subscription_period_*` | Preserved in metadata and warned about; does not set billing frequency or Waffo subscription end dates |
+| `tax_inclusive` | Preserved as `_dodoTaxInclusive`; true/unspecified settings require review and `--acknowledge-tax-semantics` before writes |
+
+The tax acknowledgement confirms that you reviewed the destination's tax behavior;
+it does **not** configure tax-inclusive pricing. The current Waffo price input has
+no equivalent tax-inclusive field. `--yes` does not bypass this review.
+
+Usage-based prices, other billing periods, unknown/unmapped tax categories
+(including live_tutoring), discounts, trials, pay-what-you-want, purchasing power
+parity, localized pricing and addons are explicitly skipped with reasons.
+Skipped products give exit code 1, including in dry-run, so a partial catalog is
+never reported as fully migrated. Supported products can still be migrated.
+
+Attached entitlements, licenses and digital delivery are reported but not migrated.
+Credit counts in descriptions remain text; website credit fulfillment needs a
+separate application integration. Customers, existing subscriptions, payment
+methods, webhooks and branding are outside the Dodo migration scope.
+
+Dodo also accepts the shared `--store-id new --store-name "My store"`,
+`--store-creation-id`, and `--log-file` options. No destination writes occur during
+preview or before confirmation.
+
+#### Dodo test acceptance
+
+Automated tests include synthetic edge cases and allowlisted real Dodo test product
+responses in `tests/fixtures/dodo-test-products.json`, fetched on 2026-10-10.
+The real API uses `Day`, `Week`, `Month`, `Year` interval values. Source preview
+and destination creation/read-back have been verified for all three products.
+A representative Dodo one-time checkout and Creem monthly subscription checkout
+also passed manual sandbox payment and merchant-dashboard verification on 2026-10-10.
+These manual checks are separate from `npm test`; future renewals and application
+credit fulfillment were not tested. Acceptance steps:
+
+1. Fetch actual Dodo responses and create sanitized fixtures without keys, headers
+   or unrelated business data; do not present the configuration below as an API export.
+2. Preview the source. For the supplied test account, expect exactly these products:
+
+| Product ID | Expected USD | Expected type |
+|---|---|---|
+| `pdt_0NpPXXZQx3aeqAiN8X5XX` | 16.00 | Monthly subscription |
+| `pdt_0NpPXbKgvwYvkaNrM0hnY` | 42.00 | Monthly subscription |
+| `pdt_0NpPXfNz0d0Or0HbC1fWr` | 19.90 | One-time |
+
+3. Review actual tax and duration settings, confirm the intended destination,
+   and run the migration. Verify two monthly products and one one-time product
+   in the Waffo test workflow and retain their ID mapping. The reader migrates all
+   unarchived products; unexpected additional products must be reviewed before writing.
+
+References: [Dodo authentication/environments](https://docs.dodopayments.com/api-reference/introduction),
+[list](https://docs.dodopayments.com/api-reference/products/get-products),
+[detail](https://docs.dodopayments.com/api-reference/products/get-products-1),
+[official TypeScript schema](https://github.com/dodopayments/dodopayments-typescript/blob/main/src/resources/products/products.ts).
 
 ## What Gets Migrated
 
@@ -133,7 +262,7 @@ npx @waffo/pancake-migrate creem \
 
 - Node.js 18+
 - Waffo Pancake API Key ([sign up](https://waffo.ai))
-- Source platform API key (Stripe Secret Key or Creem API Key)
+- Source platform API key (Stripe, Creem, or Dodo Payments)
 
 ## License
 

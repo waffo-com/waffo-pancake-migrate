@@ -8,8 +8,8 @@ source and the public migration guide.
 ```
 src/
   cli.ts             # commander root, registers subcommands
-  commands/          # one file per source platform (stripe.ts, creem.ts)
-  stripe/ creem/     # fetchers + mappers for each source
+  commands/          # one file per source platform (stripe.ts, creem.ts, dodo.ts)
+  stripe/ creem/ dodo/     # fetchers + mappers for each source
   mapper/            # shared mapping helpers (intervals, currencies, media)
   pancake/creator.ts # writes products / stores / webhooks / branding via @waffo/pancake-ts
   prompts/           # interactive mode
@@ -24,10 +24,13 @@ npm install
 npm run dev          # tsup --watch
 node dist/index.js   # run the CLI
 npm run typecheck
+npm test
+npm run format:check # verify formatting
+npm run format       # apply formatting
 ```
 
 Always test against **test-mode** keys (`sk_test_`, `creem_test_`, a Pancake
-test-environment API key). Use `--dry-run` while iterating.
+test-environment API key). For Dodo, select `--environment test` explicitly. Use `--dry-run` while iterating.
 
 ## Adding a new source platform
 

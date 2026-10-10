@@ -1,8 +1,10 @@
-import ora from 'ora';
+import ora from "ora";
 
 const active = new Set<ReturnType<typeof ora>>();
 
-export function spinner(...args: Parameters<typeof ora>): ReturnType<typeof ora> {
+export function spinner(
+  ...args: Parameters<typeof ora>
+): ReturnType<typeof ora> {
   const instance = ora(...args);
   active.add(instance);
   return instance;

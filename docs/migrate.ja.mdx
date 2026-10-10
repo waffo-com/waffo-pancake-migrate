@@ -205,3 +205,33 @@ npx @waffo/pancake-migrate creem \
 <Tip>
 移行後に統合を構築しますか？ [Waffo Pancake Skill](/ja/integrate/skill) は、チェックアウト・Webhook・サブスクリプション向けの正確な `@waffo/pancake-ts` ワークフローを AI コーディングエージェントに提供します。
 </Tip>
+
+## Dodo Payments
+
+Dodo の商品カタログと価格を、既存の Waffo 商品作成処理で移行できます。
+`DODO_PAYMENTS_API_KEY` を安全に設定し、まずプレビューします。
+
+```bash
+npx @waffo/pancake-migrate dodo --environment test --dry-run
+```
+
+書き込む場合は `--merchant-id MER_xxx --private-key ./private.pem --store-id STO_xxx`
+を追加し、プレビューを確認して承認します。本番の Dodo 商品を読む場合は
+`--environment live` を明示します。キーの接頭辞から環境を推測しません。
+プレビューに Waffo の認証情報は不要です。`--store-id new --store-name "My store"`
+で承認後にストアを作成できます。商品はテスト版として作成され、本番公開されません。
+
+未アーカイブ商品の全ページと価格の詳細を取得します。固定価格の単発商品と
+サブスクリプションに対応し、請求周期は `payment_frequency_*`（週・月・四半期・年）
+を使用します。`subscription_period_*` は請求周期として使用しません。
+金額は ISO 通貨の最小単位から換算します。元の商品 ID、税と期間の設定を metadata に
+保存し、Dodo → Waffo 商品 ID の対応を出力します。
+
+税区分は saas → saas、digital_products → digital_goods、e_book → ebook、
+edtech → online_course と明示的に変換します。税込または未指定の税設定では、
+移行先の動作を確認して `--acknowledge-tax-semantics` を指定します。
+この指定で Waffo の税込設定が変更されることはありません。契約期間は metadata のみです。
+未対応の価格・周期・税区分・割引・試用・自由価格・地域別/購買力平価価格・アドオンは
+理由付きでスキップされ、終了コードは 1 になります。
+顧客、既存契約、支払い方法、Webhook、ブランド、クレジット付与は対象外です。
+ウェブサイトのクレジット付与には別途連携が必要です。

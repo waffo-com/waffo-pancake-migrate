@@ -6,6 +6,7 @@ import type {
   MigrationSource,
   StripeCommandOptions,
   CreemCommandOptions,
+  DodoCommandOptions,
   PancakeTaxCategory,
 } from "../utils/types.js";
 
@@ -27,6 +28,7 @@ export async function selectSource(): Promise<MigrationSource> {
     choices: [
       { name: "Stripe", value: "stripe" as const },
       { name: "Creem", value: "creem" as const },
+      { name: "Dodo Payments", value: "dodo" as const },
     ],
   })) as MigrationSource;
 }
@@ -41,7 +43,8 @@ async function resolvePancakeCredentials(partial: {
     partial.merchantId ??
     (await input({
       message: "Pancake Merchant ID (MER_...):",
-      validate: (val) => (val.startsWith("MER_") ? true : "Must start with MER_"),
+      validate: (val) =>
+        val.startsWith("MER_") ? true : "Must start with MER_",
     }));
 
   let privateKey =
@@ -142,10 +145,17 @@ export async function runInteractivePrompts(
 
   // 3. Store selection (create or existing)
   const storeId = await resolveStoreId(merchantId, privateKey, partial.storeId);
-  const storeName = storeId === "new" ? partial.storeName ?? await input({
-    message: "New store name:",
-    validate: value => value.trim().length > 0 && value.trim().length <= 48 ? true : "1-48 characters required",
-  }) : undefined;
+  const storeName =
+    storeId === "new"
+      ? (partial.storeName ??
+        (await input({
+          message: "New store name:",
+          validate: (value) =>
+            value.trim().length > 0 && value.trim().length <= 48
+              ? true
+              : "1-48 characters required",
+        })))
+      : undefined;
 
   // 4. Tax category
   const taxCategory =
@@ -203,10 +213,17 @@ export async function runCreemInteractivePrompts(
 
   // 3. Store selection (create or existing)
   const storeId = await resolveStoreId(merchantId, privateKey, partial.storeId);
-  const storeName = storeId === "new" ? partial.storeName ?? await input({
-    message: "New store name:",
-    validate: value => value.trim().length > 0 && value.trim().length <= 48 ? true : "1-48 characters required",
-  }) : undefined;
+  const storeName =
+    storeId === "new"
+      ? (partial.storeName ??
+        (await input({
+          message: "New store name:",
+          validate: (value) =>
+            value.trim().length > 0 && value.trim().length <= 48
+              ? true
+              : "1-48 characters required",
+        })))
+      : undefined;
 
   return {
     apiKey,
@@ -217,5 +234,51 @@ export async function runCreemInteractivePrompts(
     storeCreationId: partial.storeCreationId,
     dryRun: partial.dryRun ?? false,
     yes: partial.yes ?? false,
+  };
+}
+
+export async function runDodoSourcePrompts(partial: DodoCommandOptions) {
+  const environment =
+    partial.environment ??
+    (await select({
+      message: "Dodo environment:",
+      choices: [
+        { name: "Test", value: "test" as const },
+        { name: "Live", value: "live" as const },
+      ],
+    }));
+  const apiKey =
+    partial.apiKey ||
+    process.env.DODO_PAYMENTS_API_KEY ||
+    (await password({
+      message: "Dodo API key (Products Read):",
+      validate: (value) => value.trim().length > 0 || "Required",
+    }));
+  registerSecret(apiKey);
+  return { environment, apiKey };
+}
+
+export async function runDodoTargetPrompts(partial: DodoCommandOptions) {
+  const credentials = await resolvePancakeCredentials(partial);
+  const storeId = await resolveStoreId(
+    credentials.merchantId,
+    credentials.privateKey,
+    partial.storeId
+  );
+  const storeName =
+    storeId === "new"
+      ? (partial.storeName ??
+        (await input({
+          message: "New store name:",
+          validate: (value) =>
+            (value.trim().length > 0 && value.trim().length <= 48) ||
+            "1-48 characters required",
+        })))
+      : undefined;
+  return {
+    ...credentials,
+    storeId,
+    storeName,
+    storeCreationId: partial.storeCreationId,
   };
 }
