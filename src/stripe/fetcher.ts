@@ -5,23 +5,32 @@ import { sourceStep } from "../utils/source-diagnostics.js";
 
 function stripeClient(apiKey: string, step: string) {
   registerSecret(apiKey);
-  const stripe = new Stripe(apiKey, { httpClient: Stripe.createFetchHttpClient() });
+  const stripe = new Stripe(apiKey, {
+    httpClient: Stripe.createFetchHttpClient(),
+  });
   let requestNumber = 0;
-  stripe.on('response', response => audit('source.response', {
-    source: 'stripe', step, requestNumber: ++requestNumber, path: response.path.split('?')[0],
-    status: response.status, requestId: response.request_id, durationMs: response.elapsed,
-  }));
+  stripe.on("response", (response) =>
+    audit("source.response", {
+      source: "stripe",
+      step,
+      requestNumber: ++requestNumber,
+      path: response.path.split("?")[0],
+      status: response.status,
+      requestId: response.request_id,
+      durationMs: response.elapsed,
+    })
+  );
   return stripe;
 }
 
 export async function fetchStripeProducts(
   apiKey: string
 ): Promise<StripeProductWithPrices[]> {
-  const stripe = stripeClient(apiKey, 'products_and_prices');
+  const stripe = stripeClient(apiKey, "products_and_prices");
 
   // Fetch all active products
   const products: Stripe.Product[] = [];
-  await sourceStep('stripe', 'products', async () => {
+  await sourceStep("stripe", "products", async () => {
     for await (const product of stripe.products.list({
       active: true,
       limit: 100,
@@ -34,7 +43,7 @@ export async function fetchStripeProducts(
 
   // Fetch all active prices
   const prices: Stripe.Price[] = [];
-  await sourceStep('stripe', 'prices', async () => {
+  await sourceStep("stripe", "prices", async () => {
     for await (const price of stripe.prices.list({
       active: true,
       limit: 100,
@@ -62,7 +71,9 @@ export async function fetchStripeProducts(
     if (productPrices.length === 0) continue;
 
     const hasOnetimePrices = productPrices.some((p) => p.type === "one_time");
-    const hasRecurringPrices = productPrices.some((p) => p.type === "recurring");
+    const hasRecurringPrices = productPrices.some(
+      (p) => p.type === "recurring"
+    );
 
     result.push({
       product,
@@ -89,8 +100,10 @@ export interface StripeBranding {
 export async function fetchStripeBranding(
   apiKey: string
 ): Promise<StripeBranding> {
-  const stripe = stripeClient(apiKey, 'branding');
-  const account = await sourceStep('stripe', 'branding', () => stripe.accounts.retrieve());
+  const stripe = stripeClient(apiKey, "branding");
+  const account = await sourceStep("stripe", "branding", () =>
+    stripe.accounts.retrieve()
+  );
   const bp = account.business_profile;
 
   return {
@@ -115,8 +128,8 @@ export interface StripeWebhookEndpoint {
 export async function fetchStripeWebhooks(
   apiKey: string
 ): Promise<StripeWebhookEndpoint[]> {
-  const stripe = stripeClient(apiKey, 'webhooks');
-  return sourceStep('stripe', 'webhooks', async () => {
+  const stripe = stripeClient(apiKey, "webhooks");
+  return sourceStep("stripe", "webhooks", async () => {
     const endpoints: StripeWebhookEndpoint[] = [];
 
     for await (const wh of stripe.webhookEndpoints.list({ limit: 100 })) {
@@ -126,9 +139,9 @@ export async function fetchStripeWebhooks(
         enabledEvents: wh.enabled_events,
         status: wh.status,
         description: wh.description ?? null,
-    });
-  }
+      });
+    }
 
-  return endpoints;
+    return endpoints;
   });
 }

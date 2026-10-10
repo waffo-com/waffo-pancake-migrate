@@ -1,7 +1,11 @@
 import { Creem } from "creem";
 import { HTTPClient } from "creem/lib/http.js";
 import { audit, registerSecret } from "../utils/audit.js";
-import { sourceStep, validateCreemPage, recordCreemShape } from "../utils/source-diagnostics.js";
+import {
+  sourceStep,
+  validateCreemPage,
+  recordCreemShape,
+} from "../utils/source-diagnostics.js";
 
 export interface CreemProduct {
   id: string;
@@ -22,21 +26,41 @@ export async function fetchCreemProducts(
   isTest: boolean
 ): Promise<CreemProduct[]> {
   registerSecret(apiKey);
-  return sourceStep('creem', 'products', async () => {
+  return sourceStep("creem", "products", async () => {
     let page = 1;
     const creem = new Creem({
-      httpClient: new HTTPClient({ fetcher: async (url, init) => {
-        audit('source.request', { source: 'creem', step: 'products', page });
-        const started = Date.now();
-        const response = await globalThis.fetch(url, init);
-        audit('source.response', { source: 'creem', step: 'products', page, path: new URL(url instanceof Request ? url.url : String(url)).pathname, status: response.status,
-          durationMs: Date.now() - started, requestId: response.headers.get('x-request-id') ?? response.headers.get('request-id') });
-        if (response.ok) {
-          try { recordCreemShape(await response.clone().json(), page); }
-          catch { audit('source.response_shape', { source: 'creem', step: 'products', page, responseShape: 'invalid_json' }); }
-        }
-        return response;
-      }}),
+      httpClient: new HTTPClient({
+        fetcher: async (url, init) => {
+          audit("source.request", { source: "creem", step: "products", page });
+          const started = Date.now();
+          const response = await globalThis.fetch(url, init);
+          audit("source.response", {
+            source: "creem",
+            step: "products",
+            page,
+            path: new URL(url instanceof Request ? url.url : String(url))
+              .pathname,
+            status: response.status,
+            durationMs: Date.now() - started,
+            requestId:
+              response.headers.get("x-request-id") ??
+              response.headers.get("request-id"),
+          });
+          if (response.ok) {
+            try {
+              recordCreemShape(await response.clone().json(), page);
+            } catch {
+              audit("source.response_shape", {
+                source: "creem",
+                step: "products",
+                page,
+                responseShape: "invalid_json",
+              });
+            }
+          }
+          return response;
+        },
+      }),
       apiKey,
       serverIdx: isTest ? 1 : 0,
     });

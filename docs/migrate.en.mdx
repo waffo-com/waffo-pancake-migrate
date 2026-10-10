@@ -205,3 +205,33 @@ These are intentional — here's what to do about each:
 <Tip>
 Building the integration after migrating? The [Waffo Pancake Skill](/integrate/skill) gives AI coding agents the exact `@waffo/pancake-ts` workflow for checkout, webhooks, and subscriptions.
 </Tip>
+
+## Dodo Payments
+
+Dodo supports product catalog and pricing migration using the same Waffo creator.
+Set `DODO_PAYMENTS_API_KEY` privately, then preview:
+
+```bash
+npx @waffo/pancake-migrate dodo --environment test --dry-run
+```
+
+To migrate, add `--merchant-id MER_xxx --private-key ./private.pem --store-id STO_xxx`.
+Review the preview and confirm before writing. Use `--environment live` only when
+reading live Dodo products; the environment is never inferred from a key prefix.
+Preview requires no Waffo credentials. `--store-id new --store-name "My store"`
+creates a store after confirmation. Imported products are test versions, not published.
+
+The reader fetches every unarchived product page and retrieves full price details.
+One-time and recurring fixed prices are supported; billing uses `payment_frequency_*`
+(weekly, monthly, quarterly, yearly), not `subscription_period_*`. Amounts use the
+currency's ISO minor units. Source IDs and tax/duration settings are preserved in
+metadata, and the result prints Dodo → Waffo ID mappings.
+
+Tax categories map explicitly: saas → saas, digital_products → digital_goods,
+e_book → ebook, edtech → online_course. Inclusive or unspecified tax settings
+require destination review and `--acknowledge-tax-semantics`; this flag does not
+configure tax-inclusive behavior in Waffo. Subscription duration is metadata only.
+Unsupported prices, periods, tax categories, discounts, trials, pay-what-you-want,
+localized/PPP pricing and addons are reported as skipped, with exit code 1.
+Customers, existing subscriptions, payment methods, webhooks, branding and credit
+fulfillment are outside scope. Website credits need separate integration.

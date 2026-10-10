@@ -4,5 +4,7 @@ dist/
 .DS_Store
 *.pem
 .env
+.env.*
+!.env.test.example
 
 .pancake-migrate/
