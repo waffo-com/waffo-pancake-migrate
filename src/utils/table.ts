@@ -25,9 +25,9 @@ export function renderPreviewTable(
 
   const warningsByProduct = new Map<string, string[]>();
   for (const w of warnings) {
-    const existing = warningsByProduct.get(w.stripeProductId) ?? [];
+    const existing = warningsByProduct.get(w.sourceProductId) ?? [];
     existing.push(w.message);
-    warningsByProduct.set(w.stripeProductId, existing);
+    warningsByProduct.set(w.sourceProductId, existing);
   }
 
   for (const p of products) {
@@ -40,7 +40,7 @@ export function renderPreviewTable(
         ? `subscription (${p.billingPeriod})`
         : "one-time";
 
-    const notes = warningsByProduct.get(p.stripeProductId)?.join("; ") ?? "";
+    const notes = warningsByProduct.get(p.sourceProductId)?.join("; ") ?? "";
 
     table.push([
       p.name,
@@ -61,7 +61,7 @@ export function renderPreviewTable(
       wordWrap: true,
     });
     for (const s of skipped) {
-      skipTable.push([s.stripeName, s.reason]);
+      skipTable.push([s.sourceProductName, s.reason]);
     }
     console.log(skipTable.toString());
   }
@@ -73,17 +73,21 @@ export function renderResultsTable(results: MigrationResult[]): void {
       chalk.bold("Product"),
       chalk.bold("Status"),
       chalk.bold("Pancake ID"),
+      chalk.bold("Version"),
       chalk.bold("Error"),
     ],
-    colWidths: [30, 10, 30, 30],
+    colWidths: [25, 14, 30, 14, 30],
     wordWrap: true,
   });
 
   for (const r of results) {
     table.push([
       r.input.name,
-      r.success ? chalk.green("OK") : chalk.red("FAIL"),
+      r.success
+        ? chalk.green("VERIFIED")
+        : chalk.red(r.pancakeProductId ? "UNVERIFIED" : "FAIL"),
       r.pancakeProductId ?? chalk.dim("—"),
+      r.success ? (r.hasProdVersion ? "Test + prod" : "Test only") : "Unknown",
       r.error ?? chalk.dim("—"),
     ]);
   }
@@ -94,6 +98,6 @@ export function renderResultsTable(results: MigrationResult[]): void {
   const failed = results.length - succeeded;
   console.log();
   console.log(
-    `${chalk.green.bold(succeeded)} succeeded, ${failed > 0 ? chalk.red.bold(failed) : chalk.dim(0)} failed`
+    `${chalk.green.bold(succeeded)} verified, ${failed > 0 ? chalk.red.bold(failed) : chalk.dim(0)} failed`
   );
 }

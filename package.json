@@ -1,7 +1,7 @@
 {
   "name": "@waffo/pancake-migrate",
   "version": "0.2.0",
-  "description": "Migrate products and settings from Stripe or Creem to Waffo Pancake",
+  "description": "Migrate products and settings from Stripe, Creem or Dodo Payments to Waffo Pancake",
   "type": "module",
   "bin": {
     "pancake-migrate": "./dist/index.js"
@@ -15,7 +15,14 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "test": "node tests/run.mjs",
+    "dodo:preview": "npm run build && node --env-file=.env.test dist/index.js dodo --environment test --dry-run",
+    "dodo:migrate": "npm run build && node --env-file=.env.test dist/index.js dodo --environment test",
+    "creem:preview": "npm run build && node --env-file=.env.test dist/index.js creem --dry-run",
+    "creem:migrate": "npm run build && node --env-file=.env.test dist/index.js creem",
+    "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\" \"*.json\" \"*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\" \"*.json\" \"*.ts\""
   },
   "dependencies": {
     "@inquirer/prompts": "^7.0.0",
@@ -29,6 +36,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "prettier": "3.9.9",
     "tsup": "^8.0.0",
     "typescript": "^5.9.0"
   },
@@ -40,6 +48,7 @@
     "pancake",
     "stripe",
     "creem",
+    "dodo",
     "migration",
     "payments",
     "cli"

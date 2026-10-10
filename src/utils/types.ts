@@ -12,7 +12,8 @@ export interface StripeProductWithPrices {
 
 // ── Mapper output types ──
 
-export type PancakeBillingPeriod = "weekly" | "monthly" | "quarterly" | "yearly";
+export type PancakeBillingPeriod =
+  "weekly" | "monthly" | "quarterly" | "yearly";
 
 export type PancakeTaxCategory =
   | "digital_goods"
@@ -43,20 +44,20 @@ export interface PancakeProductInput {
   billingPeriod?: PancakeBillingPeriod;
   media: PancakeMediaItem[];
   metadata: Record<string, unknown>;
-  stripeProductId: string;
-  stripePriceIds: string[];
+  sourceProductId: string;
+  sourcePriceIds: string[];
 }
 
 export interface MappingWarning {
-  stripeProductId: string;
-  stripeProductName: string;
+  sourceProductId: string;
+  sourceProductName: string;
   message: string;
   severity: "info" | "warn" | "error";
 }
 
 export interface SkippedItem {
-  stripeId: string;
-  stripeName: string;
+  sourceProductId: string;
+  sourceProductName: string;
   reason: string;
 }
 
@@ -72,6 +73,7 @@ export interface MigrationResult {
   input: PancakeProductInput;
   success: boolean;
   pancakeProductId?: string;
+  hasProdVersion?: boolean;
   error?: string;
 }
 
@@ -82,6 +84,9 @@ export interface StripeCommandOptions {
   merchantId?: string;
   privateKey?: string;
   storeId?: string;
+  logFile?: string;
+  storeName?: string;
+  storeCreationId?: string;
   taxCategory?: PancakeTaxCategory;
   dryRun?: boolean;
   yes?: boolean;
@@ -95,12 +100,14 @@ export interface CreemCommandOptions {
   merchantId?: string;
   privateKey?: string;
   storeId?: string;
+  logFile?: string;
   storeName?: string;
+  storeCreationId?: string;
   dryRun?: boolean;
   yes?: boolean;
 }
 
-export type MigrationSource = "stripe" | "creem";
+export type MigrationSource = "stripe" | "creem" | "dodo";
 
 export const TAX_CATEGORIES: PancakeTaxCategory[] = [
   "saas",
@@ -115,14 +122,36 @@ export const TAX_CATEGORIES: PancakeTaxCategory[] = [
 // ── Currency utils ──
 
 const ZERO_DECIMAL_CURRENCIES = new Set([
-  "BIF", "CLP", "DJF", "GNF", "JPY", "KMF", "KRW", "MGA", "PYG",
-  "RWF", "UGX", "VND", "VUV", "XAF", "XOF", "XPF",
+  "BIF",
+  "CLP",
+  "DJF",
+  "GNF",
+  "JPY",
+  "KMF",
+  "KRW",
+  "MGA",
+  "PYG",
+  "RWF",
+  "UGX",
+  "VND",
+  "VUV",
+  "XAF",
+  "XOF",
+  "XPF",
 ]);
 
 /** Convert Stripe's smallest-unit integer to display string ("9.99" or "1000" for JPY) */
-export function centsToDisplay(amountInCents: number, currency: string): string {
+export function centsToDisplay(
+  amountInCents: number,
+  currency: string
+): string {
   if (ZERO_DECIMAL_CURRENCIES.has(currency.toUpperCase())) {
     return String(amountInCents);
   }
   return (amountInCents / 100).toFixed(2);
+}
+
+export interface DodoCommandOptions extends CreemCommandOptions {
+  environment?: "test" | "live";
+  acknowledgeTaxSemantics?: boolean;
 }
