@@ -4,7 +4,7 @@
   "description": "Migrate products and settings from Stripe, Creem, Dodo Payments or Lemon Squeezy to Waffo Pancake",
   "type": "module",
   "bin": {
-    "pancake-migrate": "./dist/index.js"
+    "pancake-migrate": "dist/index.js"
   },
   "files": [
     "dist",
