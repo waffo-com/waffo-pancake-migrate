@@ -7,8 +7,10 @@ import type {
   StripeCommandOptions,
   CreemCommandOptions,
   DodoCommandOptions,
+  LemonSqueezyCommandOptions,
   PancakeTaxCategory,
 } from "../utils/types.js";
+import type { LemonSqueezyStore } from "../lemonsqueezy/fetcher.js";
 
 const TAX_CATEGORY_OPTIONS: PancakeTaxCategory[] = [
   "saas",
@@ -29,6 +31,7 @@ export async function selectSource(): Promise<MigrationSource> {
       { name: "Stripe", value: "stripe" as const },
       { name: "Creem", value: "creem" as const },
       { name: "Dodo Payments", value: "dodo" as const },
+      { name: "Lemon Squeezy", value: "lemonsqueezy" as const },
     ],
   })) as MigrationSource;
 }
@@ -258,7 +261,7 @@ export async function runDodoSourcePrompts(partial: DodoCommandOptions) {
   return { environment, apiKey };
 }
 
-export async function runDodoTargetPrompts(partial: DodoCommandOptions) {
+export async function runDodoTargetPrompts(partial: CreemCommandOptions) {
   const credentials = await resolvePancakeCredentials(partial);
   const storeId = await resolveStoreId(
     credentials.merchantId,
@@ -281,4 +284,34 @@ export async function runDodoTargetPrompts(partial: DodoCommandOptions) {
     storeName,
     storeCreationId: partial.storeCreationId,
   };
+}
+
+// Same Pancake credential and store prompts as Dodo.
+export const runLemonSqueezyTargetPrompts = runDodoTargetPrompts;
+
+export async function runLemonSqueezyKeyPrompt(
+  partial: LemonSqueezyCommandOptions
+): Promise<string> {
+  const apiKey =
+    partial.apiKey ||
+    process.env.LEMONSQUEEZY_API_KEY ||
+    (await password({
+      message: "Lemon Squeezy API key (test or live mode):",
+      validate: (value) => value.trim().length > 0 || "Required",
+    }));
+  registerSecret(apiKey);
+  return apiKey;
+}
+
+export async function selectLemonSqueezyStore(
+  stores: LemonSqueezyStore[]
+): Promise<LemonSqueezyStore> {
+  const id = await select({
+    message: "Lemon Squeezy store to migrate:",
+    choices: stores.map((s) => ({
+      name: `${s.name} (${s.id}) [${s.currency}]`,
+      value: s.id,
+    })),
+  });
+  return stores.find((s) => s.id === id)!;
 }

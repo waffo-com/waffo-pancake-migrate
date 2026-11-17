@@ -1,6 +1,6 @@
 # @waffo/pancake-migrate
 
-Migrate products and settings from **Stripe**, **Creem**, or **Dodo Payments** to [Waffo Pancake](https://waffo.ai).
+Migrate products and settings from **Stripe**, **Creem**, **Dodo Payments**, or **Lemon Squeezy** to [Waffo Pancake](https://waffo.ai).
 
 ## Quick Start
 
@@ -10,7 +10,7 @@ npx @waffo/pancake-migrate
 
 Interactive mode guides you through:
 
-1. **Choose source** — Stripe, Creem, or Dodo Payments
+1. **Choose source** — Stripe, Creem, Dodo Payments, or Lemon Squeezy
 2. **Choose target store** — existing store or create a new one
 3. **Preview** — see what will be migrated before confirming
 4. **Migrate** — products, prices, images, webhooks, and branding
@@ -202,6 +202,68 @@ References: [Dodo authentication/environments](https://docs.dodopayments.com/api
 [detail](https://docs.dodopayments.com/api-reference/products/get-products-1),
 [official TypeScript schema](https://github.com/dodopayments/dodopayments-typescript/blob/main/src/resources/products/products.ts).
 
+### Lemon Squeezy
+
+Lemon Squeezy migrates the product catalog and discount codes. Set
+`LEMONSQUEEZY_API_KEY` privately; a test-mode key reads test data and a live-mode
+key reads live data (the API has no separate test host).
+
+```bash
+# Source-only preview; no Waffo credentials needed.
+npx @waffo/pancake-migrate lemonsqueezy --dry-run
+
+# Create test-version products and coupons after reviewing the preview.
+npx @waffo/pancake-migrate lemonsqueezy \
+  --merchant-id MER_xxx --private-key ./private.pem --store-id STO_xxx \
+  --acknowledge-tax-semantics
+```
+
+`--ls-store-id` selects the source store when the key can access several (otherwise
+an interactive prompt asks, and non-interactive runs fail). `--skip-discounts`
+migrates products only. Local scripts: `npm run lemonsqueezy:preview` and
+`npm run lemonsqueezy:migrate` read `.env.test`.
+
+The reader lists products, variants and discounts of the store (JSON:API pages of
+100 following `links.next`), takes each variant's newest Price object, and reads the
+linked variants of product-limited discounts from the included `variants` linkage
+(falling back to the relationship's related route). Field names and shapes follow the
+docs and the official `lemonsqueezy.js` SDK types. Responses are shape-checked before
+mapping.
+
+| Lemon Squeezy | Waffo behavior |
+|---|---|
+| Published variant, or the `pending` default variant of a product without variants | One product per variant; name `Product - Variant` (product name only for the default variant) |
+| Price `category` one_time / subscription, `scheme` standard | One-time product / subscription |
+| `renewal_interval_*` | 1 week → weekly; 1 month → monthly; 3 months → quarterly; 12 months or 1 year → yearly |
+| `unit_price` (cents) | Store currency, ISO minor units (USD 1600 → 16.00, JPY 1600 → 1600) |
+| `tax_code` | eservice → digital_goods; ebook → ebook; saas → saas |
+| description (HTML) | Plain text; `large_thumb_url` (or `thumb_url`) → image |
+| IDs | `_lemonSqueezy*` metadata (store, product, variant, price, tax code) |
+| Published discount | Coupon with the same code; percent → percentage, fixed → amount in store currency |
+| `duration` | once / forever as-is; repeating → `durationInPeriods = duration_in_months` only when every affected subscription is monthly |
+| `max_redemptions`, `expires_at` | `maxRedemptions` (count restarts at 0), `redeemBy` |
+| Variants of a product-limited discount | `productIds` of the migrated products; the coupon is not created unless every one was created and verified |
+
+The Lemon Squeezy API does not expose whether the store's prices include tax, so
+writes need `--acknowledge-tax-semantics` (`--yes` does not bypass it). Coupons are
+created after the products through the signed `/v1/actions/coupon/create-coupon`
+action, in the environment of the Pancake API key, then read back through GraphQL
+(code, discount, duration, products, limit, expiry, status). A 409 means the code is
+already active in the store, usually from an earlier run.
+
+Skipped with reasons (exit code 1, also in dry-run): draft products, variants and
+discounts; pay-what-you-want, lead magnets, free prices, graduated/volume/package and
+usage-based pricing, setup fees, free trials, other intervals and unmapped tax codes;
+expired or future-dated discounts, codes that are not 3-32 letters, digits or hyphens,
+duplicate codes, discounts limited to unmigrated variants, and repeating discounts on
+non-monthly plans. License keys, files, customers, subscriptions, payment methods and
+webhooks are outside scope.
+
+References: [requests and pagination](https://docs.lemonsqueezy.com/api/getting-started/requests),
+[variants](https://docs.lemonsqueezy.com/api/variants/the-variant-object),
+[prices](https://docs.lemonsqueezy.com/api/prices/the-price-object),
+[discounts](https://docs.lemonsqueezy.com/api/discounts/the-discount-object).
+
 ## What Gets Migrated
 
 ### From Stripe
@@ -222,12 +284,21 @@ References: [Dodo authentication/environments](https://docs.dodopayments.com/api
 | Billing periods | Mapped (every-month→monthly, every-three-months→quarterly, every-year→yearly) |
 | Tax categories | Mapped (saas→saas, digital-goods-service→digital_goods, ebooks→ebook) |
 
+### From Lemon Squeezy
+
+| Data | Status |
+|------|--------|
+| Products + Prices | Migrated (one product per sellable variant, store currency, images, descriptions) |
+| Billing periods | Mapped (week→weekly, month→monthly, 3 months→quarterly, year→yearly) |
+| Tax categories | Mapped (eservice→digital_goods, ebook→ebook, saas→saas) |
+| Discount codes | Migrated as coupons (percent/fixed, duration, limit, expiry, product restrictions) |
+
 ### Not Migrated
 
 - Active subscriptions (must be created through checkout)
 - Customer data (auto-created on first purchase)
 - Payment methods (PCI compliance)
-- Coupons/discounts (not supported by Pancake)
+- Coupons/discounts from Stripe, Creem and Dodo (Lemon Squeezy discount codes are migrated)
 - Checkout theme colors (Stripe doesn't expose via API)
 
 ## Options
@@ -262,7 +333,7 @@ References: [Dodo authentication/environments](https://docs.dodopayments.com/api
 
 - Node.js 18+
 - Waffo Pancake API Key ([sign up](https://waffo.ai))
-- Source platform API key (Stripe, Creem, or Dodo Payments)
+- Source platform API key (Stripe, Creem, Dodo Payments, or Lemon Squeezy)
 
 ## License
 

@@ -15,13 +15,20 @@ export function redact(value: string): string {
   let result = value;
   for (const secret of secrets)
     result = result.split(secret).join("[REDACTED]");
-  return result
-    .replace(
-      /-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?-----END [^-]*PRIVATE KEY-----/g,
-      "[REDACTED]"
-    )
-    .replace(/\b(?:sk_(?:test|live)_|creem_)[A-Za-z0-9_]+/g, "[REDACTED]")
-    .replace(/[A-Za-z0-9+/]{128,}={0,2}/g, "[REDACTED]");
+  return (
+    result
+      .replace(
+        /-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?-----END [^-]*PRIVATE KEY-----/g,
+        "[REDACTED]"
+      )
+      .replace(/\b(?:sk_(?:test|live)_|creem_)[A-Za-z0-9_]+/g, "[REDACTED]")
+      // Lemon Squeezy API keys are JWTs.
+      .replace(
+        /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g,
+        "[REDACTED]"
+      )
+      .replace(/[A-Za-z0-9+/]{128,}={0,2}/g, "[REDACTED]")
+  );
 }
 export function startAudit(path?: string): string {
   file = undefined;
@@ -56,6 +63,8 @@ export function audit(event: string, fields: Record<string, unknown> = {}) {
     "storeId",
     "productId",
     "sourceProductId",
+    "couponId",
+    "sourceDiscountId",
     "name",
     "path",
     "status",

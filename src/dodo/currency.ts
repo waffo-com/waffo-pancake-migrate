@@ -12,3 +12,19 @@ export const CURRENCY_MINOR_UNITS = new Map<string, number>([
     .map((code) => [code, 3] as [string, number]),
   ..."CLF UYW".split(" ").map((code) => [code, 4] as [string, number]),
 ]);
+
+/** Integer ISO minor units to a display amount, without binary floating-point rounding. */
+export function minorUnitsToDisplay(
+  amount: unknown,
+  currency: unknown
+): string {
+  if (typeof currency !== "string" || !CURRENCY_MINOR_UNITS.has(currency))
+    throw new Error("Unsupported currency");
+  if (typeof amount !== "number" || !Number.isSafeInteger(amount) || amount < 0)
+    throw new Error("Invalid minor-unit amount");
+  const digits = CURRENCY_MINOR_UNITS.get(currency)!;
+  const value = String(amount).padStart(digits + 1, "0");
+  return digits === 0
+    ? value
+    : `${value.slice(0, -digits)}.${value.slice(-digits)}`;
+}

@@ -78,6 +78,28 @@ export async function query<T>(
   return response.data ?? response;
 }
 
+/**
+ * Signed POST for API actions the pinned SDK (0.4.2) has no resource for, such as coupons.
+ * Reuses the SDK's own HTTP client so signing, the deterministic idempotency key and the
+ * audited fetch above stay identical to every other write. Returns the unwrapped `data`.
+ */
+export async function signedPost<T>(
+  client: WaffoPancake,
+  path: string,
+  body: object
+): Promise<T> {
+  const http = (client as unknown as { http?: { post?: unknown } }).http;
+  if (!http || typeof http.post !== "function")
+    throw new Error(
+      "The installed @waffo/pancake-ts does not expose a signed HTTP client"
+    );
+  return (http.post as (path: string, body: object) => Promise<T>).call(
+    http,
+    path,
+    body
+  );
+}
+
 export async function readBack<T>(operation: () => Promise<T>): Promise<T> {
   for (let attempt = 1; ; attempt++) {
     try {
