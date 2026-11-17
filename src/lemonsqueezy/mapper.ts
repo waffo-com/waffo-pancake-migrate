@@ -63,6 +63,20 @@ export function htmlToText(html: string | null): string | null {
 }
 
 /** Variants a buyer can actually purchase: published ones, else the hidden default variant. */
+/**
+ * Pending variants of products that also have published variants. Lemon Squeezy keeps the
+ * original default variant hidden once variants are added, and selecting a whole product for a
+ * discount links it too. Buyers can never purchase it, so a restriction may ignore it.
+ */
+function hiddenDefaultVariantIds(catalog: LemonSqueezyCatalog): Set<string> {
+  const hidden = new Set<string>();
+  for (const product of catalog.products)
+    if (product.variants.some((v) => v.status === "published"))
+      for (const variant of product.variants)
+        if (variant.status === "pending") hidden.add(variant.id);
+  return hidden;
+}
+
 function sellableVariants(product: LemonSqueezyProduct) {
   const published = product.variants.filter((v) => v.status === "published");
   if (published.length) return { variants: published, isDefault: false };
@@ -257,16 +271,18 @@ function mapDiscount(
   let applicable = products;
   const sourceProductIds: string[] = [];
   if (discount.is_limited_to_products) {
-    if (!discount.variantIds.length)
+    const hidden = hiddenDefaultVariantIds(catalog);
+    const variantIds = discount.variantIds.filter((id) => !hidden.has(id));
+    if (!variantIds.length)
       throw new Error("Limited to products, but no variants are linked");
-    const missing = discount.variantIds.filter(
+    const missing = variantIds.filter(
       (id) => !byVariant.has(variantSourceId(id))
     );
     if (missing.length)
       throw new Error(
         `Applies to variant(s) that are not migrated: ${missing.join(", ")}`
       );
-    sourceProductIds.push(...discount.variantIds.map(variantSourceId));
+    sourceProductIds.push(...variantIds.map(variantSourceId));
     applicable = sourceProductIds.map((id) => byVariant.get(id)!);
   }
 

@@ -1928,6 +1928,66 @@ test("Lemon Squeezy discounts that cannot be expressed exactly are skipped with 
   assert.equal(warnings.length, 0);
 });
 
+test("Lemon Squeezy ignores the hidden default variant that whole-product discounts link", async () => {
+  // Observed in a real Lemon Squeezy test store: adding variants keeps the original default
+  // variant as `pending`, and selecting the whole product in a discount links it as well.
+  const catalogWithHidden = lsCatalog.map((p) =>
+    p.id === "200"
+      ? {
+          ...p,
+          variants: [
+            {
+              id: "2000",
+              name: "Default",
+              status: "pending",
+              price: lsPrice(),
+            },
+            ...p.variants.filter((v) => v.status !== "draft"),
+          ],
+        }
+      : p
+  );
+  const wholeProduct = {
+    ...lsDiscounts[0],
+    id: "w",
+    code: "SAASALL10",
+    is_limited_to_products: true,
+    is_limited_redemptions: false,
+    expires_at: null,
+    variants: ["2000", "2001", "2002"],
+  };
+  const onlyHidden = {
+    ...wholeProduct,
+    id: "h",
+    code: "HIDDENONLY",
+    variants: ["2000"],
+  };
+  const catalog = await lsFetch({
+    catalog: catalogWithHidden,
+    discounts: [wholeProduct, onlyHidden],
+  });
+  const { products, skipped: productSkips } = mapLemonSqueezyProducts(catalog);
+  // The hidden default is not a product and not reported as skipped.
+  assert.deepEqual(
+    products.map((p) => p.sourceProductId),
+    ["variant:1000", "variant:2001", "variant:2002"]
+  );
+  assert.equal(productSkips.length, 0);
+  const { coupons, skipped } = mapLemonSqueezyDiscounts(
+    catalog,
+    products,
+    Date.parse("2026-11-17")
+  );
+  assert.deepEqual(
+    coupons.map((c) => [c.code, c.sourceProductIds]),
+    [["SAASALL10", ["variant:2001", "variant:2002"]]]
+  );
+  assert.deepEqual(
+    skipped.map((s) => [s.code, s.reason]),
+    [["HIDDENONLY", "Limited to products, but no variants are linked"]]
+  );
+});
+
 test("HTML descriptions become readable plain text", () => {
   assert.equal(
     htmlToText("<h2>Title</h2><p>A&nbsp;&lt;b&gt; &#8212; ok<br>line</p>"),
