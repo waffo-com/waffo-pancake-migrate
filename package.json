@@ -1,10 +1,10 @@
 {
   "name": "@waffo/pancake-migrate",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Migrate products and settings from Stripe, Creem, Dodo Payments or Lemon Squeezy to Waffo Pancake",
   "type": "module",
   "bin": {
-    "pancake-migrate": "./dist/index.js"
+    "pancake-migrate": "dist/index.js"
   },
   "files": [
     "dist",

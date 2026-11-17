@@ -10,7 +10,7 @@ export function createCli(): Command {
   program
     .name("pancake-migrate")
     .description("Migrate products and settings to Waffo Pancake")
-    .version("0.2.0");
+    .version("0.3.0");
 
   program.addCommand(stripeCommand());
   program.addCommand(creemCommand());

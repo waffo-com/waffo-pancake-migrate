@@ -511,7 +511,7 @@ test("Creem source logs actual versions, pages and counts without product payloa
     .map((line) => JSON.parse(line));
   const started = events.find((event) => event.event === "source.started");
   assert.equal(started.sdkVersion, "1.4.4");
-  assert.equal(started.toolVersion, "0.2.0");
+  assert.equal(started.toolVersion, "0.3.0");
   assert.ok(started.nodeVersion.startsWith("v"));
   assert.ok(
     events.some(
