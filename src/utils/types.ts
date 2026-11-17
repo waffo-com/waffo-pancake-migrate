@@ -93,6 +93,7 @@ export interface StripeCommandOptions {
   skipProducts?: boolean;
   skipWebhooks?: boolean;
   skipBranding?: boolean;
+  webhookUrl?: string;
 }
 
 export interface CreemCommandOptions {

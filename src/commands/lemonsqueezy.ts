@@ -8,6 +8,7 @@ import {
   redact,
 } from "../utils/audit.js";
 import {
+  ensureTaxAcknowledged,
   prepareTarget,
   showTarget,
   finishMigration,
@@ -90,7 +91,8 @@ export function lemonSqueezyCommand(): Command {
       opts.merchantId ||= undefined;
       opts.privateKey ||= undefined;
       opts.storeId ||= undefined;
-      registerSecret(opts.apiKey ?? process.env.LEMONSQUEEZY_API_KEY);
+      registerSecret(opts.apiKey);
+      registerSecret(process.env.LEMONSQUEEZY_API_KEY);
       registerSecret(opts.privateKey);
       try {
         log.info(`Audit log: ${startAudit(opts.logFile)}`);
@@ -150,17 +152,19 @@ async function runLemonSqueezyMigration(
 ): Promise<void> {
   if (
     !process.stdin.isTTY &&
-    !(opts.apiKey ?? process.env.LEMONSQUEEZY_API_KEY)
+    !(opts.apiKey || process.env.LEMONSQUEEZY_API_KEY)
   )
     throw new Error(
       "Non-interactive Lemon Squeezy migration requires LEMONSQUEEZY_API_KEY (or --api-key)"
     );
   const apiKey = await runLemonSqueezyKeyPrompt(opts);
   const fetching = spinner("Fetching Lemon Squeezy stores...").start();
-  const store = await chooseStore(
-    await fetchLemonSqueezyStores(apiKey),
-    opts.lsStoreId
-  );
+  const stores = await fetchLemonSqueezyStores(apiKey);
+  // Keep the spinner from drawing over the store selection prompt.
+  const pickingStore = !opts.lsStoreId && stores.length > 1;
+  if (pickingStore) fetching.stop();
+  const store = await chooseStore(stores, opts.lsStoreId);
+  if (pickingStore) fetching.start();
   fetching.text = `Fetching products, variants, prices${opts.skipDiscounts ? "" : " and discounts"} of ${store.name}...`;
   const catalog = await fetchLemonSqueezyCatalog(apiKey, store, {
     discounts: !opts.skipDiscounts,
@@ -199,11 +203,15 @@ async function runLemonSqueezyMigration(
     log.info("Nothing supported to migrate.");
     return;
   }
-  if (products.length && !opts.acknowledgeTaxSemantics) {
-    throw new Error(
+  if (
+    products.length &&
+    !(await ensureTaxAcknowledged(
+      "lemonsqueezy",
+      opts.acknowledgeTaxSemantics,
       "The Lemon Squeezy API does not expose whether prices include tax. Review the store's tax setting and destination tax behavior, then pass --acknowledge-tax-semantics. No writes made."
-    );
-  }
+    ))
+  )
+    return;
   if (
     !process.stdin.isTTY &&
     (!opts.merchantId ||
@@ -314,5 +322,5 @@ async function runLemonSqueezyMigration(
       });
     }
   }
-  finishMigration(failed + failedCoupons + skippedCount);
+  finishMigration(failed + failedCoupons, skippedCount);
 }

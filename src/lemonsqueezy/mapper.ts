@@ -30,6 +30,16 @@ const PERIODS: Record<string, PancakeBillingPeriod | undefined> = {
 const CODE_PATTERN = /^[A-Za-z0-9-]{3,32}$/;
 const COUPON_NAME_LIMIT = 64;
 
+/** Cut to at most `limit` UTF-16 units without splitting a surrogate pair. */
+function truncate(text: string, limit: number): string {
+  let out = "";
+  for (const char of text) {
+    if (out.length + char.length > limit) break;
+    out += char;
+  }
+  return out.trimEnd();
+}
+
 export const variantSourceId = (variantId: string) => `variant:${variantId}`;
 const productSourceId = (productId: string) => `product:${productId}`;
 
@@ -64,14 +74,15 @@ export function htmlToText(html: string | null): string | null {
 
 /** Variants a buyer can actually purchase: published ones, else the hidden default variant. */
 /**
- * Pending variants of products that also have published variants. Lemon Squeezy keeps the
- * original default variant hidden once variants are added, and selecting a whole product for a
- * discount links it too. Buyers can never purchase it, so a restriction may ignore it.
+ * Pending variants of products that also have other variants (published or draft). Lemon
+ * Squeezy keeps the original default variant hidden once variants are added, and selecting a
+ * whole product for a discount links it too. Buyers can never purchase it, so a restriction may
+ * ignore it. This matches sellableVariants, which only sells a pending default when it is alone.
  */
 function hiddenDefaultVariantIds(catalog: LemonSqueezyCatalog): Set<string> {
   const hidden = new Set<string>();
   for (const product of catalog.products)
-    if (product.variants.some((v) => v.status === "published"))
+    if (product.variants.length > 1)
       for (const variant of product.variants)
         if (variant.status === "pending") hidden.add(variant.id);
   return hidden;
@@ -284,6 +295,15 @@ function mapDiscount(
       );
     sourceProductIds.push(...variantIds.map(variantSourceId));
     applicable = sourceProductIds.map((id) => byVariant.get(id)!);
+  } else {
+    // A store-wide Lemon Squeezy discount covers exactly the Lemon Squeezy products. Scope it to
+    // the migrated products so it never reaches products already in the target Pancake store.
+    if (!products.length)
+      throw new Error("Applies to the whole store, but no products are migrated");
+    sourceProductIds.push(...products.map((p) => p.sourceProductId));
+    warn(
+      `Store-wide discount: limited to the ${products.length} migrated product(s); products already in the target store are not included.`
+    );
   }
 
   let duration: CouponPlan["duration"];
@@ -309,7 +329,7 @@ function mapDiscount(
 
   return {
     sourceDiscountId: discount.id,
-    name: (discount.name.trim() || code).slice(0, COUPON_NAME_LIMIT),
+    name: truncate(discount.name.trim() || code, COUPON_NAME_LIMIT),
     code,
     discount: couponDiscount,
     duration,

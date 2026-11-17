@@ -26,6 +26,7 @@ import {
 } from "../src/stripe/fetcher.js";
 import { PassThrough } from "node:stream";
 import { createCli } from "../src/cli.js";
+import { ensureTaxAcknowledged } from "../src/utils/migration.js";
 
 const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
   .privateKey.export({ type: "pkcs8", format: "pem" })
@@ -214,7 +215,11 @@ test("audit redacts credentials and excludes request bodies and headers", async 
   assert.match(text, /req-test/);
   assert.throws(() => startAudit(file), /EEXIST/);
 });
-function creemMock(options: Parameters<typeof mockApi>[0] = {}) {
+function creemMock(
+  options: Parameters<typeof mockApi>[0] = {},
+  extraItems: Record<string, unknown>[] = [],
+  includeBase = true
+) {
   const calls = mockApi(options);
   const pancakeFetch = globalThis.fetch;
   globalThis.fetch = async (url, init) => {
@@ -223,7 +228,7 @@ function creemMock(options: Parameters<typeof mockApi>[0] = {}) {
     return new Response(
       JSON.stringify({
         items: [
-          {
+          ...(includeBase ? [{
             id: "prod_source",
             mode: "prod",
             object: "product",
@@ -238,10 +243,11 @@ function creemMock(options: Parameters<typeof mockApi>[0] = {}) {
             tax_category: "digital-goods-service",
             created_at: "2026-01-01T00:00:00Z",
             updated_at: "2026-01-01T00:00:00Z",
-          },
+          }] : []),
+          ...extraItems,
         ],
         pagination: {
-          total_records: 1,
+          total_records: (includeBase ? 1 : 0) + extraItems.length,
           total_pages: 1,
           current_page: 1,
           next_page: null,
@@ -511,7 +517,7 @@ test("Creem source logs actual versions, pages and counts without product payloa
     .map((line) => JSON.parse(line));
   const started = events.find((event) => event.event === "source.started");
   assert.equal(started.sdkVersion, "1.4.4");
-  assert.equal(started.toolVersion, "0.3.0");
+  assert.equal(started.toolVersion, "0.3.1");
   assert.ok(started.nodeVersion.startsWith("v"));
   assert.ok(
     events.some(
@@ -1844,7 +1850,8 @@ test("Lemon Squeezy discounts map to coupons with product limits, duration and r
       durationInPeriods: null,
       maxRedemptions: 50,
       redeemBy: "2099-01-01T00:00:00.000Z",
-      sourceProductIds: [],
+      // Store-wide discounts are scoped to the migrated products, never the whole target store.
+      sourceProductIds: ["variant:1000", "variant:2001", "variant:2002"],
     },
     {
       sourceDiscountId: "2",
@@ -1863,6 +1870,7 @@ test("Lemon Squeezy discounts map to coupons with product limits, duration and r
     [["DRAFT10", "Draft discount"]]
   );
   assert.match(warnings[0].message, /restarts at 50/);
+  assert.match(warnings[1].message, /Store-wide discount: limited to the 3 migrated/);
 });
 
 test("Lemon Squeezy discounts that cannot be expressed exactly are skipped with reasons", async () => {
@@ -1925,7 +1933,10 @@ test("Lemon Squeezy discounts that cannot be expressed exactly are skipped with 
       "Duplicate code",
     ]
   );
-  assert.equal(warnings.length, 0);
+  assert.deepEqual(
+    warnings.map((w) => w.message.startsWith("Store-wide discount")),
+    [true]
+  );
 });
 
 test("Lemon Squeezy ignores the hidden default variant that whole-product discounts link", async () => {
@@ -2162,7 +2173,11 @@ test("Lemon Squeezy real-command mock creates products then product-scoped coupo
     ["Synthetic ebook", "Synthetic SaaS - Monthly", "Synthetic SaaS - Yearly"]
   );
   assert.equal(coupons.length, 2);
-  assert.equal(coupons[0].productIds, undefined);
+  assert.deepEqual(
+    [...coupons[0].productIds].sort(),
+    created.map((p: any) => p.id).sort(),
+    "store-wide coupons are limited to the migrated products"
+  );
   assert.deepEqual(coupons[1].productIds, [created[1].id]);
   assert.equal(coupons[1].durationInPeriods, 3);
   assert.ok(
@@ -2209,4 +2224,218 @@ test("Lemon Squeezy coupon conflicts and read-back mismatches fail without false
   const unverified = events(log, "coupon.unverified");
   assert.equal(unverified.length, 1);
   assert.match(unverified[0].couponId, /^CPN_/);
+});
+
+test("tax acknowledgement: flag passes, scripts fail closed, terminals ask", async () => {
+  const error = "Review taxes, then pass --acknowledge-tax-semantics. No writes made.";
+  const asked: string[] = [];
+  const ask = (answer: boolean) => async (message: string) => {
+    asked.push(message);
+    return answer;
+  };
+  await ensureTaxAcknowledged("lemonsqueezy", true, error, { interactive: true, ask: ask(false) });
+  assert.equal(asked.length, 0, "the flag never prompts");
+  await assert.rejects(
+    ensureTaxAcknowledged("lemonsqueezy", undefined, error, { interactive: false, ask: ask(true) }),
+    { message: error }
+  );
+  assert.equal(asked.length, 0, "non-interactive runs never prompt");
+  await ensureTaxAcknowledged("dodo", undefined, error, { interactive: true, ask: ask(true) });
+  assert.equal(asked.length, 1);
+  assert.equal(
+    await ensureTaxAcknowledged("dodo", undefined, error, { interactive: true, ask: ask(false) }),
+    false,
+    "declining cancels like the final confirmation does"
+  );
+});
+
+test("Lemon Squeezy coupons: drafts-only hidden default, safe name truncation, nothing to scope to", async () => {
+  const catalog = await lsFetch({
+    catalog: [
+      ...lsCatalog,
+      {
+        id: "300",
+        name: "Unreleased",
+        description: "",
+        variants: [
+          { id: "3000", name: "Default", status: "pending", price: lsPrice() },
+          { id: "3001", name: "Pro", status: "draft", price: lsPrice() },
+        ],
+      },
+    ],
+    discounts: [
+      {
+        ...lsDiscounts[0],
+        id: "e",
+        code: "EBOOKPLUS",
+        name: "x".repeat(63) + "\u{1F389} sale",
+        is_limited_to_products: true,
+        is_limited_redemptions: false,
+        expires_at: null,
+        // Whole-product selection of the ebook and of a product whose other variant is a draft.
+        variants: ["1000", "3000"],
+      },
+    ],
+  });
+  const { products } = mapLemonSqueezyProducts(catalog);
+  const { coupons, skipped } = mapLemonSqueezyDiscounts(
+    catalog,
+    products,
+    Date.parse("2026-11-17")
+  );
+  assert.deepEqual(skipped, []);
+  assert.deepEqual(coupons[0].sourceProductIds, ["variant:1000"]);
+  assert.equal(coupons[0].name, "x".repeat(63), "never splits the emoji's surrogate pair");
+
+  const storeWide = {
+    ...catalog,
+    discounts: [{ ...catalog.discounts[0], is_limited_to_products: false, variantIds: [] }],
+  };
+  const none = mapLemonSqueezyDiscounts(storeWide, [], Date.parse("2026-11-17"));
+  assert.deepEqual(
+    none.skipped.map((s) => s.reason),
+    ["Applies to the whole store, but no products are migrated"]
+  );
+});
+
+/** Stripe webhook endpoints + Pancake store mock that records webhook updates. */
+function stripeWebhookMock(urls: string[]) {
+  const updates: any[] = [];
+  globalThis.fetch = async (url, init) => {
+    const path = String(url);
+    if (path.includes("api.stripe.com"))
+      return new Response(
+        JSON.stringify({
+          object: "list",
+          has_more: false,
+          url: "/v1/webhook_endpoints",
+          data: urls.map((u, i) => ({
+            id: `we_${i}`,
+            object: "webhook_endpoint",
+            url: u,
+            enabled_events: ["checkout.session.completed"],
+            status: "enabled",
+          })),
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    const body = JSON.parse(String(init?.body ?? "{}"));
+    if (path.endsWith("/update-store")) {
+      updates.push(body.webhookSettings);
+      return response({ store });
+    }
+    return response({ store, stores: [store] });
+  };
+  return updates;
+}
+const stripeWebhookArgs = (name: string, extra: string[] = []) => [
+  "stripe",
+  "--stripe-key",
+  "sk_test_fake",
+  "--merchant-id",
+  merchantId,
+  "--private-key",
+  privateKey,
+  "--store-id",
+  storeId,
+  "--tax-category",
+  "saas",
+  "--skip-products",
+  "--skip-branding",
+  "--yes",
+  "--log-file",
+  join(dir, name + ".jsonl"),
+  ...extra,
+];
+
+test("Stripe: several webhook endpoints are not silently collapsed into one", async () => {
+  const updates = stripeWebhookMock(["https://a.example/hook", "https://b.example/hook"]);
+  await createCli().parseAsync(stripeWebhookArgs("stripe-multi-wh"), { from: "user" });
+  assert.equal(updates.length, 0, "no endpoint may overwrite another without a choice");
+  assert.equal(process.exitCode, 1, "skipped endpoints make the run incomplete");
+});
+
+test("Stripe: --webhook-url migrates exactly the chosen endpoint", async () => {
+  const updates = stripeWebhookMock(["https://a.example/hook", "https://b.example/hook"]);
+  await createCli().parseAsync(
+    stripeWebhookArgs("stripe-pick-wh", ["--webhook-url", "https://a.example/hook"]),
+    { from: "user" }
+  );
+  assert.deepEqual(
+    updates.map((u) => u.testWebhookUrl),
+    ["https://a.example/hook"]
+  );
+  assert.notEqual(process.exitCode, 1);
+});
+
+test("Creem: unmapped tax categories and billing periods are skipped, never substituted", async () => {
+  const { mapCreemProducts } = await import("../src/creem/mapper.js");
+  const base = {
+    description: "",
+    price: 1000,
+    currency: "usd",
+    imageUrl: null,
+  };
+  const result = mapCreemProducts([
+    { ...base, id: "p1", name: "Course", billingType: "onetime", billingPeriod: "once", taxCategory: "courses" },
+    { ...base, id: "p2", name: "Weekly", billingType: "recurring", billingPeriod: "every-week", taxCategory: "saas" },
+    { ...base, id: "p3", name: "Ok", billingType: "onetime", billingPeriod: "once", taxCategory: "ebooks" },
+  ] as any);
+  assert.deepEqual(
+    result.products.map((p) => p.sourceProductId),
+    ["p3"]
+  );
+  assert.deepEqual(
+    result.skipped.map((s) => s.reason),
+    ["Unmapped tax category: courses", "Unsupported billing period: every-week"]
+  );
+});
+
+const sixMonthCreem = {
+  id: "prod_six",
+  mode: "prod",
+  object: "product",
+  name: "Half-year",
+  description: "",
+  price: 4990,
+  currency: "USD",
+  billing_type: "recurring",
+  billing_period: "every-six-months",
+  status: "active",
+  tax_mode: "exclusive",
+  tax_category: "saas",
+  created_at: "2026-01-01T00:00:00Z",
+  updated_at: "2026-01-01T00:00:00Z",
+};
+
+test("Creem: skipped products are shown and make the run incomplete, even when nothing maps", async () => {
+  const calls = creemMock({}, [sixMonthCreem], false);
+  await cli("creem-all-skipped");
+  assert.equal(calls.length, 0, "nothing to write");
+  assert.equal(process.exitCode, 1);
+});
+
+test("Creem: a partial migration reports its skips instead of complete success", async () => {
+  creemMock({}, [sixMonthCreem]);
+  const log = await cli("creem-partial");
+  assert.equal(process.exitCode, 1);
+  assert.match(log, /"event":"migration.finished"[^\n]*"failed":0[^\n]*"count":1/);
+});
+
+test("Stripe: endpoints sharing a URL become one webhook with all their events", async () => {
+  const updates: any[] = [];
+  const base = stripeWebhookMock(["https://a.example/hook", "https://a.example/hook"]);
+  const fetchWithEvents = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    const res = await fetchWithEvents(url, init);
+    if (!String(url).includes("api.stripe.com")) return res;
+    const body = await res.json();
+    body.data[1].enabled_events = ["customer.subscription.deleted"];
+    return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  await createCli().parseAsync(stripeWebhookArgs("stripe-same-url"), { from: "user" });
+  updates.push(...base);
+  assert.equal(updates.length, 1, "one update, not one per endpoint");
+  assert.deepEqual([...updates[0].testEvents].sort(), ["order.completed", "subscription.canceled"]);
+  assert.notEqual(process.exitCode, 1);
 });

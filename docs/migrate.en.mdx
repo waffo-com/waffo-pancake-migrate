@@ -1,9 +1,9 @@
 ---
 title: "Migrate to Waffo Pancake"
-description: "Move your products, prices, webhooks, and branding to Waffo Pancake with the pancake-migrate CLI"
+description: "Move your products and prices (plus webhooks, branding or discount codes, depending on the source) to Waffo Pancake with the pancake-migrate CLI"
 ---
 
-Already running on Stripe, Creem, Dodo Payments or Lemon Squeezy? The [`@waffo/pancake-migrate`](https://www.npmjs.com/package/@waffo/pancake-migrate) CLI copies your products, prices, webhooks, and branding into a Waffo Pancake store — no manual re-entry.
+Already running on Stripe, Creem, Dodo Payments or Lemon Squeezy? The [`@waffo/pancake-migrate`](https://www.npmjs.com/package/@waffo/pancake-migrate) CLI copies your products and prices into a Waffo Pancake store — plus webhooks and branding from Stripe, and discount codes from Lemon Squeezy — no manual re-entry.
 
 <Note>
 Migration moves your **catalog and settings**, not live billing. Active subscriptions, customers, and payment methods stay where they are — see [What does *not* migrate](#what-does-not-migrate) for why and what to do.
@@ -24,7 +24,7 @@ Before you run anything, here's how your existing setup lines up with Waffo Panc
 | Webhook endpoint | Store webhook | Stripe endpoints migrate with URL + event-type mapping. (Creem webhooks are not read by the CLI.) |
 | Account branding | Store branding | Stripe support email + website migrate. |
 | Tax behavior | `taxCategory` | Creem categories map automatically; for Stripe you pass one default via `--tax-category`. |
-| Test / live keys | `test` / `production` | Auto-detected from your key prefix (`sk_test_`→test, `sk_live_`→production). |
+| Test / live keys | `test` / `production` | Auto-detected from your key prefix (`sk_test_`→test, `sk_live_`→production). This decides which Stripe data is read and which webhook setting is written; products are always created as unpublished test versions. |
 
 ## Before you start
 
@@ -35,7 +35,7 @@ You need three things:
 3. **Your source platform key** — a Stripe Secret Key (`sk_test_...` / `sk_live_...`), a Creem API Key (`creem_test_...` / `creem_...`), a Dodo Payments API key, or a Lemon Squeezy API key.
 
 <Warning>
-The migration **creates** products in the target environment that your key implies (test vs. live). Always do a `--dry-run` first to preview exactly what will be created.
+The migration **creates** products in your Pancake store as unpublished test versions, whichever source environment (test or live) it reads from. Always do a `--dry-run` first to preview exactly what will be created.
 </Warning>
 
 ## Quickest path: interactive mode
@@ -57,13 +57,13 @@ It walks you through it step by step:
     See exactly what will be migrated before anything is created.
   </Step>
   <Step title="Migrate">
-    Products, prices, images, webhooks, and branding are created in your store.
+    Products and prices are created in your store, plus webhooks and branding from Stripe and discount codes from Lemon Squeezy. For Lemon Squeezy, and Dodo prices that are tax-inclusive or unspecified, you first confirm that you reviewed the destination tax behavior.
   </Step>
 </Steps>
 
 ## Scripted migration
 
-If you'd rather pass everything as flags (for CI, or to repeat the run), use the per-source subcommands.
+If you'd rather pass everything as flags (for CI, or to repeat the run), use the per-source subcommands. Without a terminal (CI), add `--yes` to skip the confirmation prompt.
 
 ### From Stripe
 
@@ -97,6 +97,7 @@ npx @waffo/pancake-migrate stripe \
   --merchant-id MER_xxx \
   --private-key ./private.pem \
   --store-id new \
+  --store-name "My store" \
   --tax-category saas
 ```
 
@@ -114,11 +115,13 @@ npx @waffo/pancake-migrate stripe ... --skip-webhooks --skip-branding
 | `--merchant-id <id>` | Pancake Merchant ID (`MER_...`) |
 | `--private-key <path>` | Path to your Pancake API private key file, or the raw key content |
 | `--store-id <id>` | Target Store ID (`STO_...`), or `new` to create one |
+| `--store-name <name>` | Name for a new store (required with `--store-id new`) |
 | `--tax-category <cat>` | Default tax category: `saas`, `digital_goods`, `software`, `ebook`, `online_course`, `consulting`, `professional_service` |
 | `--dry-run` | Preview without creating anything |
 | `--yes` | Skip the confirmation prompt |
 | `--skip-products` | Skip product migration |
 | `--skip-webhooks` | Skip webhook migration |
+| `--webhook-url <url>` | Stripe endpoint to migrate when there are several (Pancake keeps one webhook URL per environment) |
 | `--skip-branding` | Skip branding migration |
 
 ### From Creem
@@ -150,6 +153,7 @@ npx @waffo/pancake-migrate creem \
 | `--merchant-id <id>` | Pancake Merchant ID (`MER_...`) |
 | `--private-key <path>` | Path to your Pancake API private key file, or the raw key content |
 | `--store-id <id>` | Target Store ID (`STO_...`), or `new` to create one |
+| `--store-name <name>` | Name for a new store (required with `--store-id new`) |
 | `--dry-run` | Preview without creating anything |
 | `--yes` | Skip the confirmation prompt |
 
@@ -161,7 +165,17 @@ Set `DODO_PAYMENTS_API_KEY` privately, then preview (no Waffo credentials needed
 npx @waffo/pancake-migrate dodo --environment test --dry-run
 ```
 
-To migrate, add `--merchant-id MER_xxx --private-key ./private.pem --store-id STO_xxx`, review the preview and confirm. `--store-id new --store-name "My store"` creates a store after confirmation. Use `--environment live` only when reading live Dodo products — the environment is never inferred from a key prefix. Inclusive or unspecified tax settings require destination review and `--acknowledge-tax-semantics`; the flag does not configure tax-inclusive behavior in Waffo.
+To migrate, drop `--dry-run` and add the Pancake credentials:
+
+```bash
+npx @waffo/pancake-migrate dodo --environment test \
+  --merchant-id MER_xxx \
+  --private-key ./private.pem \
+  --store-id STO_xxx \
+  --acknowledge-tax-semantics
+```
+
+`--acknowledge-tax-semantics` is needed when a price is tax-inclusive or has no tax setting: it confirms you reviewed the destination tax behavior and does not configure tax in Waffo. In a terminal you can confirm at the prompt instead. Without a terminal (CI), also add `--yes` to skip the final confirmation; `--yes` never counts as the tax confirmation. `--store-id new --store-name "My store"` creates a store after confirmation. Use `--environment live` only when reading live Dodo products — the environment is never inferred from a key prefix.
 
 ### From Lemon Squeezy
 
@@ -171,7 +185,17 @@ Set `LEMONSQUEEZY_API_KEY` privately — a test-mode key reads test data, a live
 npx @waffo/pancake-migrate lemonsqueezy --dry-run
 ```
 
-To migrate, add `--merchant-id MER_xxx --private-key ./private.pem --store-id STO_xxx --acknowledge-tax-semantics`. The Lemon Squeezy API does not say whether prices include tax, so the flag confirms you reviewed the destination tax behavior; it does not configure tax in Waffo. If the key can access several stores, add `--ls-store-id <id>`. Use `--skip-discounts` to migrate products only.
+To migrate, drop `--dry-run` and add the Pancake credentials:
+
+```bash
+npx @waffo/pancake-migrate lemonsqueezy \
+  --merchant-id MER_xxx \
+  --private-key ./private.pem \
+  --store-id STO_xxx \
+  --acknowledge-tax-semantics
+```
+
+The Lemon Squeezy API does not say whether prices include tax, so `--acknowledge-tax-semantics` confirms you reviewed the destination tax behavior; it does not configure tax in Waffo. In a terminal you can confirm at the prompt instead. Without a terminal (CI), also add `--yes` to skip the final confirmation; `--yes` never counts as the tax confirmation. If the key can access several stores, add `--ls-store-id <id>`. Use `--skip-discounts` to migrate products only.
 
 ## What gets migrated
 
@@ -181,9 +205,9 @@ To migrate, add `--merchant-id MER_xxx --private-key ./private.pem --store-id ST
 |---|---|
 | Products + Prices | Yes — multi-currency, images, descriptions |
 | Billing periods | Yes — `week`→`weekly`, `month`→`monthly`, every 3 months→`quarterly`, `year`→`yearly` |
-| Webhook endpoints | Yes — URL + event-type mapping |
+| Webhook endpoints | Yes — URL + event-type mapping. Pancake keeps one webhook URL per environment: endpoints that share a URL are merged with all their events. With several URLs, pick one at the prompt or with `--webhook-url` (the others are reported, not migrated); without a choice, webhooks are skipped (exit code 1). An `sk_live_` key replaces the store's production webhook URL |
 | Store branding | Yes — support email + website |
-| Environment | Auto-detected — `sk_test_`→test, `sk_live_`→production |
+| Environment | Auto-detected — `sk_test_`→test, `sk_live_`→production for the source data and the webhook setting. Products are always unpublished test versions |
 
 ### From Creem
 
@@ -191,31 +215,32 @@ To migrate, add `--merchant-id MER_xxx --private-key ./private.pem --store-id ST
 |---|---|
 | Products + Prices | Yes — single-currency, images, descriptions |
 | Billing periods | Yes — every-month→`monthly`, every-three-months→`quarterly`, every-year→`yearly` |
-| Tax categories | Yes — `saas`→`saas`, `digital-goods-service`→`digital_goods`, `ebooks`→`ebook` |
+| Tax categories | Yes — `saas`→`saas`, `digital-goods-service`→`digital_goods`, `ebooks`→`ebook`; any other category is skipped with a reason |
 
 ### From Dodo Payments
 
 | Data | Migrated |
 |---|---|
-| Products + Prices | Yes — unarchived products with fixed one-time or recurring prices, amounts in the currency's ISO minor units |
+| Products + Prices | Yes — unarchived products with fixed one-time or recurring prices, amounts converted from the currency's ISO minor units |
 | Billing periods | Yes — `payment_frequency_*` weekly, monthly, quarterly, yearly (not `subscription_period_*`) |
 | Tax categories | Yes — `saas`→`saas`, `digital_products`→`digital_goods`, `e_book`→`ebook`, `edtech`→`online_course` |
-| ID mapping | Source IDs, tax and duration settings saved in metadata; Dodo → Waffo IDs printed |
-| Environment | Explicit — `--environment test` or `--environment live` |
+| ID mapping | Source IDs and tax settings saved in metadata; Dodo → Waffo IDs printed |
+| Subscription duration | Metadata only — Waffo subscriptions do not end on the Dodo end date |
+| Source environment | Explicit — `--environment test` or `--environment live`. Products are created as unpublished test versions either way |
 
-Skipped with a reason (exit code 1): other prices, periods and tax categories, discounts, trials, pay-what-you-want, localized / PPP pricing and addons. Webhooks, branding and credit fulfillment are outside scope.
+Skipped with a reason (exit code 1, also on `--dry-run`): other prices, periods and tax categories, discounts, trials, pay-what-you-want, localized / PPP pricing and addons. Webhooks, branding and credit fulfillment are outside scope.
 
 ### From Lemon Squeezy
 
 | Data | Migrated |
 |---|---|
-| Products + Prices | Yes — one product per sellable variant (`Product - Variant`), current price in the store currency; HTML descriptions become plain text |
+| Products + Prices | Yes — one product per sellable variant, named `Product - Variant` (a product without variants keeps its own name); current price in the store currency; HTML descriptions become plain text |
 | Billing periods | Yes — 1 week→`weekly`, 1 month→`monthly`, 3 months→`quarterly`, 12 months or 1 year→`yearly` |
 | Tax categories | Yes — `eservice`→`digital_goods`, `ebook`→`ebook`, `saas`→`saas` |
-| Discount codes | Yes — same code as a Pancake coupon: percent or fixed amount, once / repeating / forever, redemption limit, expiry and product restrictions. Created after the products and verified by reading back; redemption counts restart from zero |
-| Environment | Set by the key — test-mode key reads test data |
+| Discount codes | Yes — same code (stored in uppercase) as a Pancake coupon: percent or fixed amount, once / repeating / forever, redemption limit, expiry and product restrictions. A store-wide discount applies only to the migrated products, not to products already in the target store. Created after the products and verified by reading back, in the environment of your Pancake API key; redemption counts restart from zero |
+| Source environment | Set by the key — a test-mode key reads test data. Products are created as unpublished test versions either way |
 
-Skipped with a reason (exit code 1): draft products, variants and discounts; pay-what-you-want, free lead magnets, tiered / package / usage-based pricing, setup fees, free trials and other billing intervals; expired or not-yet-started discounts, codes longer than 32 characters, discounts that apply to unmigrated variants, and repeating discounts on non-monthly plans (Pancake counts billing periods, not months). License keys and file downloads are outside scope.
+Skipped with a reason (exit code 1, also on `--dry-run`): draft products, variants and discounts; products with no sellable variant, variants without a mapped tax code and free variants; pay-what-you-want, free lead magnets, tiered / package / usage-based pricing, setup fees, free trials and other billing intervals; expired or not-yet-started discounts, codes that are not 3–32 letters, digits or hyphens, duplicate codes (ignoring case), discounts that apply to unmigrated variants, and repeating discounts on non-monthly plans (Pancake counts billing periods, not months). License keys and file downloads are outside scope.
 
 ## What does *not* migrate {#what-does-not-migrate}
 
@@ -236,7 +261,7 @@ These are intentional — here's what to do about each:
     Open **Dashboard → Products** and confirm prices, billing periods, and images came across correctly.
   </Step>
   <Step title="Publish to production">
-    Products land in the environment your key implied. If you migrated into test, [publish](/integrate/skill) each product to go live.
+    Migrated products are unpublished test versions. [Publish](/integrate/skill) each product to go live.
   </Step>
   <Step title="Wire up checkout">
     Point your app at Waffo Pancake [checkout sessions](/guides/checkout-session) and [webhooks](/guides/webhooks).

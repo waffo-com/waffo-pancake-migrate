@@ -32,7 +32,16 @@ export function mapCreemProducts(products: CreemProduct[]): MappingResult {
 
   for (const p of products) {
     const currency = p.currency.toUpperCase();
-    const taxCategory = TAX_CATEGORY_MAP[p.taxCategory] ?? "digital_goods";
+    const taxCategory = TAX_CATEGORY_MAP[p.taxCategory];
+    // Never substitute a different tax category: skip and say why, like Dodo and Lemon Squeezy.
+    if (!taxCategory) {
+      skipped.push({
+        sourceProductId: p.id,
+        sourceProductName: p.name,
+        reason: `Unmapped tax category: ${p.taxCategory || "(none)"}`,
+      });
+      continue;
+    }
     const displayAmount = centsToDisplay(p.price, currency);
 
     if (p.billingType === "onetime" || p.billingPeriod === "once") {
@@ -56,19 +65,21 @@ export function mapCreemProducts(products: CreemProduct[]): MappingResult {
       const billingPeriod = BILLING_PERIOD_MAP[p.billingPeriod];
 
       if (!billingPeriod) {
-        if (p.billingPeriod === "every-six-months") {
-          skipped.push({
-            sourceProductId: p.id,
-            sourceProductName: p.name,
-            reason: "Unsupported billing period: every 6 months",
-          });
+        skipped.push({
+          sourceProductId: p.id,
+          sourceProductName: p.name,
+          reason:
+            p.billingPeriod === "every-six-months"
+              ? "Unsupported billing period: every 6 months"
+              : `Unsupported billing period: ${p.billingPeriod || "(none)"}`,
+        });
+        if (p.billingPeriod === "every-six-months")
           warnings.push({
             sourceProductId: p.id,
             sourceProductName: p.name,
             message: "Skipped: every-six-months not supported by Pancake",
             severity: "warn",
           });
-        }
         continue;
       }
 

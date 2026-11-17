@@ -13,7 +13,7 @@ Interactive mode guides you through:
 1. **Choose source** — Stripe, Creem, Dodo Payments, or Lemon Squeezy
 2. **Choose target store** — existing store or create a new one
 3. **Preview** — see what will be migrated before confirming
-4. **Migrate** — products, prices, images, webhooks, and branding
+4. **Migrate** — products and prices, plus webhooks and branding (Stripe) or discount codes (Lemon Squeezy). Lemon Squeezy, and tax-inclusive or unspecified Dodo prices, first ask you to confirm the destination tax behavior
 
 ## Usage
 
@@ -49,6 +49,7 @@ npx @waffo/pancake-migrate stripe \
   --merchant-id MER_xxx \
   --private-key ./private.pem \
   --store-id new \
+  --store-name "My store" \
   --tax-category saas
 
 # Skip specific steps
@@ -154,7 +155,8 @@ full details for every ID (list prices are summaries).
 
 The tax acknowledgement confirms that you reviewed the destination's tax behavior;
 it does **not** configure tax-inclusive pricing. The current Waffo price input has
-no equivalent tax-inclusive field. `--yes` does not bypass this review.
+no equivalent tax-inclusive field. In a terminal, a missing flag is replaced by a
+confirmation prompt; non-interactive runs fail without it. `--yes` does not bypass this review.
 
 Usage-based prices, other billing periods, unknown/unmapped tax categories
 (including live_tutoring), discounts, trials, pay-what-you-want, purchasing power
@@ -239,13 +241,15 @@ mapping.
 | `tax_code` | eservice → digital_goods; ebook → ebook; saas → saas |
 | description (HTML) | Plain text; `large_thumb_url` (or `thumb_url`) → image |
 | IDs | `_lemonSqueezy*` metadata (store, product, variant, price, tax code) |
-| Published discount | Coupon with the same code; percent → percentage, fixed → amount in store currency |
+| Published discount | Coupon with the same code (Pancake stores it in uppercase); percent → percentage, fixed → amount in store currency |
 | `duration` | once / forever as-is; repeating → `durationInPeriods = duration_in_months` only when every affected subscription is monthly |
 | `max_redemptions`, `expires_at` | `maxRedemptions` (count restarts at 0), `redeemBy` |
 | Variants of a product-limited discount | `productIds` of the migrated products; the coupon is not created unless every one was created and verified |
+| Store-wide discount | `productIds` of all migrated products, so it never reaches products already in the target store; also not created unless every one was created and verified |
 
 The Lemon Squeezy API does not expose whether the store's prices include tax, so
-writes need `--acknowledge-tax-semantics` (`--yes` does not bypass it). Coupons are
+writes need `--acknowledge-tax-semantics` or, in a terminal, a yes to the confirmation
+prompt (`--yes` does not bypass it). Coupons are
 created after the products through the signed `/v1/actions/coupon/create-coupon`
 action, in the environment of the Pancake API key, then read back through GraphQL
 (code, discount, duration, products, limit, expiry, status). A 409 means the code is
@@ -316,6 +320,7 @@ References: [requests and pagination](https://docs.lemonsqueezy.com/api/getting-
 | `--yes` | Skip confirmation |
 | `--skip-products` | Skip product migration |
 | `--skip-webhooks` | Skip webhook migration |
+| `--webhook-url <url>` | Stripe endpoint URL to migrate when there are several (or pick at the prompt). Pancake keeps one webhook URL per environment; endpoints sharing a URL are merged, and without a choice webhooks are skipped (exit 1). An `sk_live_` key writes the production webhook setting |
 | `--skip-branding` | Skip branding migration |
 
 ### Creem

@@ -191,11 +191,6 @@ async function runCreemMigration(opts: CreemCommandOptions): Promise<void> {
 
   const { products, warnings, skipped } = mapCreemProducts(creemProducts);
 
-  if (products.length === 0) {
-    log.warn("No products could be mapped. Check skipped items.");
-    return;
-  }
-
   console.log(
     chalk.underline(
       `Products (${products.length} to create, ${skipped.length} skipped):`
@@ -204,6 +199,13 @@ async function runCreemMigration(opts: CreemCommandOptions): Promise<void> {
   log.blank();
   renderPreviewTable(products, warnings, skipped);
   log.blank();
+  // Make partial catalog migrations detectable by automation, including previews.
+  if (skipped.length) process.exitCode = 1;
+
+  if (products.length === 0) {
+    log.warn("No products could be mapped. See the skipped items above.");
+    return;
+  }
 
   if (config.dryRun) {
     log.info("Dry run complete. No changes were made.");
@@ -256,6 +258,6 @@ async function runCreemMigration(opts: CreemCommandOptions): Promise<void> {
   renderResultsTable(results);
 
   log.blank();
-  finishMigration(failures);
+  finishMigration(failures, skipped.length);
   log.blank();
 }
