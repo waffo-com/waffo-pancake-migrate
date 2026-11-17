@@ -197,11 +197,11 @@ npx @waffo/pancake-migrate lemonsqueezy --dry-run
 
 | 数据 | 是否迁移 |
 |---|---|
-| 产品 + 价格 | 是 —— 未归档、固定价格的一次性商品和订阅，金额按币种 ISO 最小单位换算 |
-| 计费周期 | 是 —— `payment_frequency_*` 的周、月、季度、年（不使用 `subscription_period_*`） |
-| 税类 | 是 —— `saas`→`saas`、`digital_products`→`digital_goods`、`e_book`→`ebook`、`edtech`→`online_course` |
+| Products + Prices | 会——未归档、固定价格的一次性商品和订阅，金额按币种 ISO 最小单位换算 |
+| Billing periods | 会——`payment_frequency_*` 的周、月、季度、年（不使用 `subscription_period_*`） |
+| Tax categories | 会——`saas`→`saas`、`digital_products`→`digital_goods`、`e_book`→`ebook`、`edtech`→`online_course` |
 | ID 对照 | 来源 ID、税务及订阅时长设置保存在 metadata，并输出 Dodo → Waffo ID 对照 |
-| 环境 | 显式指定 —— `--environment test` 或 `--environment live` |
+| 环境 | 显式指定——`--environment test` 或 `--environment live` |
 
 以下内容会明确跳过并说明原因（退出码 1）：其他价格、周期和税类，折扣、试用、自定金额、本地化 / 购买力平价价格及附加项。Webhook、品牌和积分履约不在本次范围内。
 
@@ -209,11 +209,11 @@ npx @waffo/pancake-migrate lemonsqueezy --dry-run
 
 | 数据 | 是否迁移 |
 |---|---|
-| 产品 + 价格 | 是 —— 每个可售 variant 生成一个商品（`商品名 - Variant 名`），使用当前价格和店铺币种；HTML 描述转为纯文本 |
-| 计费周期 | 是 —— 1 周→`weekly`、1 月→`monthly`、3 月→`quarterly`、12 月或 1 年→`yearly` |
-| 税类 | 是 —— `eservice`→`digital_goods`、`ebook`→`ebook`、`saas`→`saas` |
-| 折扣码 | 是 —— 迁为同码的 Pancake 优惠券：百分比或固定金额、once / repeating / forever、兑换次数上限、过期时间、适用商品。在商品之后创建并回读校验；已用兑换次数从零开始计 |
-| 环境 | 由 key 决定 —— test mode 的 key 读测试数据 |
+| Products + Prices | 会——每个可售 variant 生成一个商品（`商品名 - Variant 名`），使用当前价格和店铺币种；HTML 描述转为纯文本 |
+| Billing periods | 会——1 周→`weekly`、1 月→`monthly`、3 月→`quarterly`、12 月或 1 年→`yearly` |
+| Tax categories | 会——`eservice`→`digital_goods`、`ebook`→`ebook`、`saas`→`saas` |
+| 折扣码 | 会——迁为同码的 Pancake 优惠券：百分比或固定金额、once / repeating / forever、兑换次数上限、过期时间、适用商品。在商品之后创建并回读校验；已用兑换次数从零开始计 |
+| 环境 | 由 key 决定——test mode 的 key 读测试数据 |
 
 以下内容会明确跳过并说明原因（退出码 1）：草稿商品、variant 和折扣；自定金额、免费 lead magnet、阶梯 / 打包 / 用量计费、开通费、免费试用和其他计费周期；已过期或尚未开始的折扣、超过 32 个字符的码、适用于未迁移 variant 的折扣，以及作用于非月付套餐的 repeating 折扣（Pancake 按计费周期计数，不按月）。License Key 和文件下载不在本次范围内。
 
@@ -226,7 +226,7 @@ npx @waffo/pancake-migrate lemonsqueezy --dry-run
 | 活跃订阅 | 订阅是与客户银行之间的实时计费授权，无法在不同支付处理方之间复制 | 现有订阅者通过 Waffo Pancake [结账](/zh/guides/checkout-session) 重新订阅。过渡期内并行运行新旧支付处理方。 |
 | 客户数据 | 在首次购买时自动创建 | 无需处理——客户会在其首次 Pancake 支付时创建 |
 | 支付方式 | 出于 PCI 合规要求，卡数据绝不离开原支付处理方 | 客户在结账时重新输入支付信息 |
-| 优惠券与促销码 | 仅从 Lemon Squeezy 迁移（见上文），Pancake 原生支持优惠券与促销码 | 其他平台的在 Pancake 中重新创建 —— 见[优惠与促销](/zh/guides/discounts) |
+| 优惠券与促销码 | 仅从 Lemon Squeezy 迁移（见上文），Pancake 原生支持优惠券与促销码 | 其他平台的优惠券请在 Pancake 中重新创建 —— 见[优惠与促销](/zh/guides/discounts) |
 | 结账主题颜色 | Stripe 不通过 API 暴露这些信息 | 在 [Dashboard → Settings → Checkout](https://pancake.waffo.ai/merchant/dashboard) 中设置 |
 
 ## 迁移之后

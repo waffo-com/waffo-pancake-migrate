@@ -197,9 +197,9 @@ npx @waffo/pancake-migrate lemonsqueezy --dry-run
 
 | データ | 移行 |
 |---|---|
-| 商品 + 価格 | はい — 未アーカイブで固定価格の単発商品とサブスクリプション。金額は ISO 通貨の最小単位から換算 |
-| 請求周期 | はい — `payment_frequency_*` の週・月・四半期・年（`subscription_period_*` は使用しません） |
-| 税区分 | はい — `saas`→`saas`、`digital_products`→`digital_goods`、`e_book`→`ebook`、`edtech`→`online_course` |
+| Products + Prices | はい — 未アーカイブで固定価格の単発商品とサブスクリプション。金額は ISO 通貨の最小単位から換算 |
+| Billing periods | はい — `payment_frequency_*` の週・月・四半期・年（`subscription_period_*` は使用しません） |
+| Tax categories | はい — `saas`→`saas`、`digital_products`→`digital_goods`、`e_book`→`ebook`、`edtech`→`online_course` |
 | ID の対応 | 元の ID、税と期間の設定を metadata に保存し、Dodo → Waffo の ID 対応を出力 |
 | 環境 | 明示指定 — `--environment test` または `--environment live` |
 
@@ -209,9 +209,9 @@ npx @waffo/pancake-migrate lemonsqueezy --dry-run
 
 | データ | 移行 |
 |---|---|
-| 商品 + 価格 | はい — 販売可能なバリアントごとに 1 商品（`商品名 - バリアント名`）、現在の価格とストア通貨。HTML の説明はプレーンテキストに変換 |
-| 請求周期 | はい — 1 週→`weekly`、1 か月→`monthly`、3 か月→`quarterly`、12 か月または 1 年→`yearly` |
-| 税区分 | はい — `eservice`→`digital_goods`、`ebook`→`ebook`、`saas`→`saas` |
+| Products + Prices | はい — 販売可能なバリアントごとに 1 商品（`商品名 - バリアント名`）、現在の価格とストア通貨。HTML の説明はプレーンテキストに変換 |
+| Billing periods | はい — 1 週→`weekly`、1 か月→`monthly`、3 か月→`quarterly`、12 か月または 1 年→`yearly` |
+| Tax categories | はい — `eservice`→`digital_goods`、`ebook`→`ebook`、`saas`→`saas` |
 | 割引コード | はい — 同じコードの Pancake クーポンとして作成: 割合または固定額、once / repeating / forever、利用上限、有効期限、対象商品。商品の後に作成し、読み戻しで検証。利用回数はゼロから数え直し |
 | 環境 | キーで決定 — テストモードのキーはテストデータを読みます |
 
