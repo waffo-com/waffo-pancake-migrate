@@ -1,4 +1,4 @@
-import { CURRENCY_MINOR_UNITS } from "./currency.js";
+import { minorUnitsToDisplay } from "./currency.js";
 import type { DodoProduct } from "./fetcher.js";
 import type {
   MappingResult,
@@ -21,21 +21,8 @@ const PERIODS: Record<string, PancakeBillingPeriod | undefined> = {
   "Year:1": "yearly",
 };
 
-/** ISO currency minor units, without binary floating-point rounding. */
-export function dodoAmountToDisplay(
-  amount: unknown,
-  currency: unknown
-): string {
-  if (typeof currency !== "string" || !CURRENCY_MINOR_UNITS.has(currency))
-    throw new Error("Unsupported currency");
-  if (typeof amount !== "number" || !Number.isSafeInteger(amount) || amount < 0)
-    throw new Error("Invalid minor-unit amount");
-  const digits = CURRENCY_MINOR_UNITS.get(currency)!;
-  const value = String(amount).padStart(digits + 1, "0");
-  return digits === 0
-    ? value
-    : `${value.slice(0, -digits)}.${value.slice(-digits)}`;
-}
+/** Dodo amounts are integer ISO minor units. */
+export const dodoAmountToDisplay = minorUnitsToDisplay;
 
 export function mapDodoProducts(source: DodoProduct[]): MappingResult {
   const result: MappingResult = { products: [], warnings: [], skipped: [] };

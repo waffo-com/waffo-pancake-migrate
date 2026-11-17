@@ -3,14 +3,14 @@ title: "Migrate to Waffo Pancake"
 description: "Move your products, prices, webhooks, and branding to Waffo Pancake with the pancake-migrate CLI"
 ---
 
-Already running on Stripe or Creem? The [`@waffo/pancake-migrate`](https://www.npmjs.com/package/@waffo/pancake-migrate) CLI copies your products, prices, webhooks, and branding into a Waffo Pancake store — no manual re-entry.
+Already running on Stripe, Creem, Dodo Payments or Lemon Squeezy? The [`@waffo/pancake-migrate`](https://www.npmjs.com/package/@waffo/pancake-migrate) CLI copies your products, prices, webhooks, and branding into a Waffo Pancake store — no manual re-entry.
 
 <Note>
 Migration moves your **catalog and settings**, not live billing. Active subscriptions, customers, and payment methods stay where they are — see [What does *not* migrate](#what-does-not-migrate) for why and what to do.
 </Note>
 
 <Info>
-On a different platform? We currently support migrating from **Stripe** and **Creem**, with more on the way. [Contact us](mailto:support@waffo.ai) and let us know what you're moving from — we'll prioritize it.
+On a different platform? We currently support migrating from **Stripe**, **Creem**, **Dodo Payments** and **Lemon Squeezy**, with more on the way. [Contact us](mailto:support@waffo.ai) and let us know what you're moving from — we'll prioritize it.
 </Info>
 
 ## How concepts map
@@ -182,7 +182,7 @@ These are intentional — here's what to do about each:
 | Active subscriptions | A subscription is a live billing authorization with the customer's bank; it can't be copied between processors | Existing subscribers re-subscribe through Waffo Pancake [checkout](/guides/checkout-session). Run the old and new processor in parallel during the transition. |
 | Customer data | Created automatically on first purchase | Nothing — customers are created on their first Pancake payment |
 | Payment methods | PCI compliance — card data never leaves the original processor | Customers re-enter payment details at checkout |
-| Coupons / discounts | Not supported by Pancake | — |
+| Coupons / discounts | Migrated from Lemon Squeezy only (see below) | Recreate codes from other sources in the dashboard |
 | Checkout theme colors | Stripe doesn't expose these via API | Set them in [Dashboard → Settings → Checkout](https://pancake.waffo.ai/merchant/dashboard) |
 
 ## After migrating
@@ -235,3 +235,40 @@ Unsupported prices, periods, tax categories, discounts, trials, pay-what-you-wan
 localized/PPP pricing and addons are reported as skipped, with exit code 1.
 Customers, existing subscriptions, payment methods, webhooks, branding and credit
 fulfillment are outside scope. Website credits need separate integration.
+
+## Lemon Squeezy
+
+Lemon Squeezy supports product catalog, pricing and discount code migration.
+Set `LEMONSQUEEZY_API_KEY` privately (a test-mode key reads test data, a live-mode
+key reads live data), then preview:
+
+```bash
+npx @waffo/pancake-migrate lemonsqueezy --dry-run
+```
+
+If the key can access several stores, add `--ls-store-id <id>`. To migrate, add
+`--merchant-id MER_xxx --private-key ./private.pem --store-id STO_xxx --acknowledge-tax-semantics`.
+The Lemon Squeezy API does not say whether prices include tax, so you confirm that
+you reviewed the destination tax behavior; the flag does not configure tax in Waffo.
+Use `--skip-discounts` to migrate products only. Imported products are test versions.
+
+Every sellable variant becomes one Waffo product: published variants, or the hidden
+default variant of a product without variants. Names are `Product - Variant` (just
+the product name for a default variant). The variant's current price is used, in the
+store currency with ISO minor units. Billing: 1 week → weekly, 1 month → monthly,
+3 months → quarterly, 12 months or 1 year → yearly. Tax codes: eservice → digital_goods,
+ebook → ebook, saas → saas. HTML descriptions become plain text.
+
+Published discount codes become Waffo coupons with the same code: percent or fixed
+amount (store currency), once / repeating / forever, redemption limit, expiry and
+product restrictions (mapped to the migrated products). Coupons are created after the
+products and verified by reading them back. They are created in the environment of
+your Pancake API key. Redemption counts restart from zero.
+
+Skipped with a reason (exit code 1): draft products, variants and discounts;
+pay-what-you-want, free lead magnets, tiered / package / usage-based pricing, setup
+fees, free trials and other billing intervals; expired or not-yet-started discounts,
+codes longer than 32 characters, discounts that apply to unmigrated variants, and
+repeating discounts on non-monthly plans (Waffo counts billing periods, not months).
+License keys, file downloads, customers, existing subscriptions, payment methods and
+webhooks are outside scope.

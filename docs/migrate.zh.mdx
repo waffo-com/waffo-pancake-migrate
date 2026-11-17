@@ -3,14 +3,14 @@ title: "迁移到 Waffo Pancake"
 description: "使用 pancake-migrate CLI 将你的产品、价格、Webhook 和品牌信息迁移到 Waffo Pancake"
 ---
 
-已经在用 Stripe 或 Creem？[`@waffo/pancake-migrate`](https://www.npmjs.com/package/@waffo/pancake-migrate) CLI 会把你的产品、价格、Webhook 和品牌信息复制到 Waffo Pancake 店铺——无需手动重新录入。
+已经在用 Stripe、Creem、Dodo Payments 或 Lemon Squeezy？[`@waffo/pancake-migrate`](https://www.npmjs.com/package/@waffo/pancake-migrate) CLI 会把你的产品、价格、Webhook 和品牌信息复制到 Waffo Pancake 店铺——无需手动重新录入。
 
 <Note>
 迁移会迁移你的**商品目录和设置**，而非实时计费。活跃订阅、客户和支付方式仍保留在原处——参见 [哪些内容*不会*迁移](#what-does-not-migrate)，了解原因及对应处理方式。
 </Note>
 
 <Info>
-在用其他平台？我们目前支持从 **Stripe** 和 **Creem** 迁移，更多平台正在路上。[联系我们](mailto:support@waffo.ai)，告诉我们你想从哪个平台迁移——我们会优先支持。
+在用其他平台？我们目前支持从 **Stripe**、**Creem**、**Dodo Payments** 和 **Lemon Squeezy** 迁移，更多平台正在路上。[联系我们](mailto:support@waffo.ai)，告诉我们你想从哪个平台迁移——我们会优先支持。
 </Info>
 
 ## 概念如何映射
@@ -182,7 +182,7 @@ npx @waffo/pancake-migrate creem \
 | 活跃订阅 | 订阅是与客户银行之间的实时计费授权，无法在不同支付处理方之间复制 | 现有订阅者通过 Waffo Pancake [结账](/zh/guides/checkout-session) 重新订阅。过渡期内并行运行新旧支付处理方。 |
 | 客户数据 | 在首次购买时自动创建 | 无需处理——客户会在其首次 Pancake 支付时创建 |
 | 支付方式 | 出于 PCI 合规要求，卡数据绝不离开原支付处理方 | 客户在结账时重新输入支付信息 |
-| 优惠券 / 折扣 | Pancake 暂不支持 | — |
+| 优惠券 / 折扣 | 仅支持从 Lemon Squeezy 迁移（见下文） | 其他平台的折扣码需在后台重新创建 |
 | 结账主题颜色 | Stripe 不通过 API 暴露这些信息 | 在 [Dashboard → Settings → Checkout](https://pancake.waffo.ai/merchant/dashboard) 中设置 |
 
 ## 迁移之后
@@ -232,3 +232,32 @@ edtech → online_course。含税或未指定税务语义的价格需审阅目�
 订阅总时长只保留在 metadata。不支持的价格、周期、税类、折扣、试用、自定金额、
 本地化/购买力平价价格及附加项会明确跳过，退出码为 1。
 客户、已有订阅、支付方式、Webhook、品牌及积分履约不在本次范围内，网站积分需独立接入。
+
+## Lemon Squeezy
+
+Lemon Squeezy 支持迁移商品目录、价格和折扣码。私下配置 `LEMONSQUEEZY_API_KEY`
+（test mode 的 key 读测试数据，live mode 的 key 读正式数据）后，先预览：
+
+```bash
+npx @waffo/pancake-migrate lemonsqueezy --dry-run
+```
+
+key 能访问多个店铺时添加 `--ls-store-id <id>`。实际迁移时添加
+`--merchant-id MER_xxx --private-key ./private.pem --store-id STO_xxx --acknowledge-tax-semantics`。
+Lemon Squeezy API 不返回价格是否含税，所以需要你确认已审阅目标税务行为；该参数不会替 Waffo 配置含税。
+只迁商品可加 `--skip-discounts`。导入的商品为测试版本。
+
+每个可售 variant 生成一个 Waffo 商品：已发布的 variant，或没有 variant 的商品自带的默认 variant。
+名称为 `商品名 - Variant 名`（默认 variant 只用商品名）。使用 variant 当前价格，币种为店铺币种，
+按 ISO 最小单位换算。计费周期：1 周 → weekly、1 月 → monthly、3 月 → quarterly、
+12 月或 1 年 → yearly。税类：eservice → digital_goods、ebook → ebook、saas → saas。
+HTML 描述转为纯文本。
+
+已发布的折扣码迁为同码的 Waffo 优惠券：百分比或固定金额（店铺币种）、once / repeating / forever、
+兑换次数上限、过期时间、适用商品（映射到已迁移的商品）。优惠券在商品之后创建，并回读校验；
+创建在你所用 Pancake API key 所属的环境。已用兑换次数从零开始计。
+
+以下内容会明确跳过并说明原因（退出码 1）：草稿商品、variant 和折扣；自定金额、免费 lead magnet、
+阶梯 / 打包 / 用量计费、开通费、免费试用和其他计费周期；已过期或尚未开始的折扣、超过 32 个字符的码、
+适用于未迁移 variant 的折扣，以及作用于非月付套餐的 repeating 折扣（Waffo 按计费周期计数，不按月）。
+License Key、文件下载、客户、已有订阅、支付方式和 Webhook 不在本次范围内。

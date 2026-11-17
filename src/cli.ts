@@ -2,6 +2,7 @@ import { Command } from "commander";
 import { stripeCommand } from "./commands/stripe.js";
 import { dodoCommand } from "./commands/dodo.js";
 import { creemCommand } from "./commands/creem.js";
+import { lemonSqueezyCommand } from "./commands/lemonsqueezy.js";
 
 export function createCli(): Command {
   const program = new Command();
@@ -14,6 +15,7 @@ export function createCli(): Command {
   program.addCommand(stripeCommand());
   program.addCommand(creemCommand());
   program.addCommand(dodoCommand());
+  program.addCommand(lemonSqueezyCommand());
 
   // Default action: interactive source selection
   program.action(async () => {

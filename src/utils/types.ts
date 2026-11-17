@@ -107,7 +107,7 @@ export interface CreemCommandOptions {
   yes?: boolean;
 }
 
-export type MigrationSource = "stripe" | "creem" | "dodo";
+export type MigrationSource = "stripe" | "creem" | "dodo" | "lemonsqueezy";
 
 export const TAX_CATEGORIES: PancakeTaxCategory[] = [
   "saas",
@@ -154,4 +154,45 @@ export function centsToDisplay(
 export interface DodoCommandOptions extends CreemCommandOptions {
   environment?: "test" | "live";
   acknowledgeTaxSemantics?: boolean;
+}
+
+export interface LemonSqueezyCommandOptions extends CreemCommandOptions {
+  lsStoreId?: string;
+  skipDiscounts?: boolean;
+  acknowledgeTaxSemantics?: boolean;
+}
+
+// ── Coupon (discount) migration ──
+
+export interface CouponPlan {
+  sourceDiscountId: string;
+  name: string;
+  code: string;
+  discount:
+    | { type: "percentage"; percentOff: number }
+    | { type: "fixed_amount"; amountOff: Record<string, string> };
+  duration: "once" | "repeating" | "forever";
+  durationInPeriods: number | null;
+  maxRedemptions: number | null;
+  redeemBy: string | null;
+  /** Source products the coupon is limited to; empty means the whole store. */
+  sourceProductIds: string[];
+}
+
+export interface CouponMappingResult {
+  coupons: CouponPlan[];
+  warnings: Array<{ sourceDiscountId: string; name: string; message: string }>;
+  skipped: Array<{
+    sourceDiscountId: string;
+    name: string;
+    code: string;
+    reason: string;
+  }>;
+}
+
+export interface CouponMigrationResult {
+  plan: CouponPlan;
+  success: boolean;
+  couponId?: string;
+  error?: string;
 }
