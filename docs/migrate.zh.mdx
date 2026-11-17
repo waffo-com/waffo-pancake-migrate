@@ -121,6 +121,7 @@ npx @waffo/pancake-migrate stripe ... --skip-webhooks --skip-branding
 | `--yes` | 跳过确认提示 |
 | `--skip-products` | 跳过产品迁移 |
 | `--skip-webhooks` | 跳过 Webhook 迁移 |
+| `--webhook-url <url>` | 有多个 Stripe endpoint 时指定要迁移的那个（Pancake 每个环境只保存一个 Webhook URL） |
 | `--skip-branding` | 跳过品牌信息迁移 |
 
 ### 从 Creem 迁移
@@ -204,7 +205,7 @@ Lemon Squeezy API 不返回价格是否含税，`--acknowledge-tax-semantics` �
 |---|---|
 | Products + Prices | 会——多币种、图片、描述 |
 | Billing periods | 会——`week`→`weekly`、`month`→`monthly`、每 3 个月→`quarterly`、`year`→`yearly` |
-| Webhook endpoints | 会——URL + 事件类型映射 |
+| Webhook endpoints | 会——URL + 事件类型映射。Pancake 每个环境只保存一个 Webhook URL：有多个 Stripe endpoint 时，在提示中选择一个或用 `--webhook-url` 指定，否则跳过 Webhook（退出码 1）。使用 `sk_live_` 密钥会替换店铺的正式环境 Webhook URL |
 | 店铺品牌信息 | 会——客服邮箱 + 网站 |
 | 环境 | 自动识别——`sk_test_`→test、`sk_live_`→production |
 
@@ -214,7 +215,7 @@ Lemon Squeezy API 不返回价格是否含税，`--acknowledge-tax-semantics` �
 |---|---|
 | Products + Prices | 会——单币种、图片、描述 |
 | Billing periods | 会——每月→`monthly`、每三个月→`quarterly`、每年→`yearly` |
-| Tax categories | 会——`saas`→`saas`、`digital-goods-service`→`digital_goods`、`ebooks`→`ebook` |
+| Tax categories | 会——`saas`→`saas`、`digital-goods-service`→`digital_goods`、`ebooks`→`ebook`；其他类别会跳过并说明原因 |
 
 ### 从 Dodo Payments 迁移
 

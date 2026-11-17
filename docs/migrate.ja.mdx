@@ -121,6 +121,7 @@ npx @waffo/pancake-migrate stripe ... --skip-webhooks --skip-branding
 | `--yes` | 確認プロンプトをスキップ |
 | `--skip-products` | 商品の移行をスキップ |
 | `--skip-webhooks` | Webhook の移行をスキップ |
+| `--webhook-url <url>` | Stripe のエンドポイントが複数ある場合に移行するものを指定（Pancake は環境ごとに Webhook URL を 1 つだけ保持します） |
 | `--skip-branding` | ブランディングの移行をスキップ |
 
 ### Creem から
@@ -204,7 +205,7 @@ Lemon Squeezy API は価格が税込かどうかを返さないため、`--ackno
 |---|---|
 | Products + Prices | はい — マルチ通貨、画像、説明 |
 | Billing periods | はい — `week`→`weekly`、`month`→`monthly`、3 か月ごと→`quarterly`、`year`→`yearly` |
-| Webhook endpoints | はい — URL + イベントタイプのマッピング |
+| Webhook endpoints | はい — URL + イベントタイプのマッピング。Pancake は環境ごとに Webhook URL を 1 つだけ保持します。Stripe のエンドポイントが複数ある場合は、プロンプトまたは `--webhook-url` で 1 つ選びます。選ばない場合 Webhook はスキップされます（終了コード 1）。`sk_live_` キーではストアの本番 Webhook URL が置き換えられます |
 | ストアブランディング | はい — サポートメール + Web サイト |
 | Environment | 自動検出 — `sk_test_`→test、`sk_live_`→production |
 
@@ -214,7 +215,7 @@ Lemon Squeezy API は価格が税込かどうかを返さないため、`--ackno
 |---|---|
 | Products + Prices | はい — 単一通貨、画像、説明 |
 | Billing periods | はい — 毎月→`monthly`、3 か月ごと→`quarterly`、毎年→`yearly` |
-| Tax categories | はい — `saas`→`saas`、`digital-goods-service`→`digital_goods`、`ebooks`→`ebook` |
+| Tax categories | はい — `saas`→`saas`、`digital-goods-service`→`digital_goods`、`ebooks`→`ebook`。その他の区分は理由付きでスキップ |
 
 ### Dodo Payments から
 

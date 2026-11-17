@@ -2292,3 +2292,96 @@ test("Lemon Squeezy coupons: drafts-only hidden default, safe name truncation, n
     ["Applies to the whole store, but no products are migrated"]
   );
 });
+
+/** Stripe webhook endpoints + Pancake store mock that records webhook updates. */
+function stripeWebhookMock(urls: string[]) {
+  const updates: any[] = [];
+  globalThis.fetch = async (url, init) => {
+    const path = String(url);
+    if (path.includes("api.stripe.com"))
+      return new Response(
+        JSON.stringify({
+          object: "list",
+          has_more: false,
+          url: "/v1/webhook_endpoints",
+          data: urls.map((u, i) => ({
+            id: `we_${i}`,
+            object: "webhook_endpoint",
+            url: u,
+            enabled_events: ["checkout.session.completed"],
+            status: "enabled",
+          })),
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    const body = JSON.parse(String(init?.body ?? "{}"));
+    if (path.endsWith("/update-store")) {
+      updates.push(body.webhookSettings);
+      return response({ store });
+    }
+    return response({ store, stores: [store] });
+  };
+  return updates;
+}
+const stripeWebhookArgs = (name: string, extra: string[] = []) => [
+  "stripe",
+  "--stripe-key",
+  "sk_test_fake",
+  "--merchant-id",
+  merchantId,
+  "--private-key",
+  privateKey,
+  "--store-id",
+  storeId,
+  "--tax-category",
+  "saas",
+  "--skip-products",
+  "--skip-branding",
+  "--yes",
+  "--log-file",
+  join(dir, name + ".jsonl"),
+  ...extra,
+];
+
+test("Stripe: several webhook endpoints are not silently collapsed into one", async () => {
+  const updates = stripeWebhookMock(["https://a.example/hook", "https://b.example/hook"]);
+  await createCli().parseAsync(stripeWebhookArgs("stripe-multi-wh"), { from: "user" });
+  assert.equal(updates.length, 0, "no endpoint may overwrite another without a choice");
+  assert.equal(process.exitCode, 1, "skipped endpoints make the run incomplete");
+});
+
+test("Stripe: --webhook-url migrates exactly the chosen endpoint", async () => {
+  const updates = stripeWebhookMock(["https://a.example/hook", "https://b.example/hook"]);
+  await createCli().parseAsync(
+    stripeWebhookArgs("stripe-pick-wh", ["--webhook-url", "https://a.example/hook"]),
+    { from: "user" }
+  );
+  assert.deepEqual(
+    updates.map((u) => u.testWebhookUrl),
+    ["https://a.example/hook"]
+  );
+  assert.notEqual(process.exitCode, 1);
+});
+
+test("Creem: unmapped tax categories and billing periods are skipped, never substituted", async () => {
+  const { mapCreemProducts } = await import("../src/creem/mapper.js");
+  const base = {
+    description: "",
+    price: 1000,
+    currency: "usd",
+    imageUrl: null,
+  };
+  const result = mapCreemProducts([
+    { ...base, id: "p1", name: "Course", billingType: "onetime", billingPeriod: "once", taxCategory: "courses" },
+    { ...base, id: "p2", name: "Weekly", billingType: "recurring", billingPeriod: "every-week", taxCategory: "saas" },
+    { ...base, id: "p3", name: "Ok", billingType: "onetime", billingPeriod: "once", taxCategory: "ebooks" },
+  ] as any);
+  assert.deepEqual(
+    result.products.map((p) => p.sourceProductId),
+    ["p3"]
+  );
+  assert.deepEqual(
+    result.skipped.map((s) => s.reason),
+    ["Unmapped tax category: courses", "Unsupported billing period: every-week"]
+  );
+});

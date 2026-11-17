@@ -121,6 +121,7 @@ npx @waffo/pancake-migrate stripe ... --skip-webhooks --skip-branding
 | `--yes` | Skip the confirmation prompt |
 | `--skip-products` | Skip product migration |
 | `--skip-webhooks` | Skip webhook migration |
+| `--webhook-url <url>` | Stripe endpoint to migrate when there are several (Pancake keeps one webhook URL per environment) |
 | `--skip-branding` | Skip branding migration |
 
 ### From Creem
@@ -204,7 +205,7 @@ The Lemon Squeezy API does not say whether prices include tax, so `--acknowledge
 |---|---|
 | Products + Prices | Yes — multi-currency, images, descriptions |
 | Billing periods | Yes — `week`→`weekly`, `month`→`monthly`, every 3 months→`quarterly`, `year`→`yearly` |
-| Webhook endpoints | Yes — URL + event-type mapping |
+| Webhook endpoints | Yes — URL + event-type mapping. Pancake keeps one webhook URL per environment: with several Stripe endpoints, pick one at the prompt or with `--webhook-url`, otherwise webhooks are skipped (exit code 1). An `sk_live_` key replaces the store's production webhook URL |
 | Store branding | Yes — support email + website |
 | Environment | Auto-detected — `sk_test_`→test, `sk_live_`→production |
 
@@ -214,7 +215,7 @@ The Lemon Squeezy API does not say whether prices include tax, so `--acknowledge
 |---|---|
 | Products + Prices | Yes — single-currency, images, descriptions |
 | Billing periods | Yes — every-month→`monthly`, every-three-months→`quarterly`, every-year→`yearly` |
-| Tax categories | Yes — `saas`→`saas`, `digital-goods-service`→`digital_goods`, `ebooks`→`ebook` |
+| Tax categories | Yes — `saas`→`saas`, `digital-goods-service`→`digital_goods`, `ebooks`→`ebook`; any other category is skipped with a reason |
 
 ### From Dodo Payments
 

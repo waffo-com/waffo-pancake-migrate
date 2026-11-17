@@ -319,6 +319,7 @@ References: [requests and pagination](https://docs.lemonsqueezy.com/api/getting-
 | `--yes` | Skip confirmation |
 | `--skip-products` | Skip product migration |
 | `--skip-webhooks` | Skip webhook migration |
+| `--webhook-url <url>` | Stripe endpoint to migrate when there are several; Pancake keeps one webhook URL per environment, so without a choice webhooks are skipped (exit 1). An `sk_live_` key writes the production webhook setting |
 | `--skip-branding` | Skip branding migration |
 
 ### Creem

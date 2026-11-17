@@ -79,6 +79,10 @@ export function stripeCommand(): Command {
     .option("--yes", "Skip confirmation prompt")
     .option("--skip-products", "Skip product migration")
     .option("--skip-webhooks", "Skip webhook migration")
+    .option(
+      "--webhook-url <url>",
+      "Stripe endpoint to migrate when there are several (Pancake keeps one webhook URL per environment)"
+    )
     .option("--skip-branding", "Skip store branding migration")
     .action(async (opts: StripeCommandOptions) => {
       registerSecret(opts.privateKey);
@@ -254,6 +258,45 @@ async function runStripeMigration(opts: StripeCommandOptions): Promise<void> {
     }
   }
 
+  // Pancake keeps a single webhook URL per environment, so several Stripe endpoints cannot all
+  // be migrated: updating one after another would silently keep only the last.
+  let skippedWebhooks = 0;
+  const webhookEnv = isTestKey ? "test" : "production";
+  if (opts.webhookUrl) {
+    const chosen = stripeWebhooks.filter((wh) => wh.url === opts.webhookUrl);
+    if (!chosen.length && stripeWebhooks.length) {
+      log.warn(
+        `--webhook-url ${opts.webhookUrl} is not one of the Stripe endpoints: ${stripeWebhooks.map((wh) => wh.url).join(", ")}. Webhooks skipped.`
+      );
+      skippedWebhooks = stripeWebhooks.length;
+    }
+    stripeWebhooks = chosen.slice(0, 1);
+  } else if (stripeWebhooks.length > 1) {
+    const urls = stripeWebhooks.map((wh) => wh.url);
+    let picked: string | undefined;
+    if (process.stdin.isTTY && !config.dryRun) {
+      const { select } = await import("@inquirer/prompts");
+      picked = await select({
+        message: `Pancake keeps one ${webhookEnv} webhook URL per store. Which Stripe endpoint should it use?`,
+        choices: [
+          ...urls.map((url) => ({ name: url, value: url })),
+          { name: "Skip webhooks", value: "" },
+        ],
+      });
+    }
+    const kept = stripeWebhooks.filter((wh) => wh.url === picked);
+    skippedWebhooks = stripeWebhooks.length - kept.length;
+    if (!picked)
+      log.warn(
+        `Found ${urls.length} Stripe webhook endpoints, but Pancake keeps one ${webhookEnv} webhook URL per store. Webhooks skipped; rerun with --webhook-url <url> to migrate one (${urls.join(", ")}).`
+      );
+    else
+      log.warn(
+        `Only ${picked} is migrated; ${skippedWebhooks} other Stripe endpoint(s) are not.`
+      );
+    stripeWebhooks = kept;
+  }
+
   // ═══════════════════════════════════════════
   // Phase 2: Preview
   // ═══════════════════════════════════════════
@@ -306,6 +349,9 @@ async function runStripeMigration(opts: StripeCommandOptions): Promise<void> {
         `    Events: ${wh.enabledEvents.length} subscribed, status: ${wh.status}`
       );
     }
+    log.warn(
+      `Replaces the store's ${webhookEnv} webhook URL and events${isTestKey ? "" : " (a live Stripe key writes the production webhook setting)"}.`
+    );
     log.blank();
   }
 
@@ -316,14 +362,18 @@ async function runStripeMigration(opts: StripeCommandOptions): Promise<void> {
   const hasWebhooks = stripeWebhooks.length > 0;
 
   if (!hasProducts && !hasBranding && !hasWebhooks) {
-    if (failures) finishMigration(failures);
-    else log.info("Nothing to migrate.");
+    if (failures) finishMigration(failures, skippedWebhooks);
+    else {
+      log.info("Nothing to migrate.");
+      if (skippedWebhooks) process.exitCode = 1;
+    }
     return;
   }
 
   if (config.dryRun) {
     log.info("Dry run complete. No changes were made.");
-    if (failures) finishMigration(failures);
+    if (failures) finishMigration(failures, skippedWebhooks);
+    else if (skippedWebhooks) process.exitCode = 1;
     return;
   }
 
@@ -432,6 +482,6 @@ async function runStripeMigration(opts: StripeCommandOptions): Promise<void> {
   }
 
   log.blank();
-  finishMigration(failures);
+  finishMigration(failures, skippedWebhooks);
   log.blank();
 }
