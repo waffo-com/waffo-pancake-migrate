@@ -48,8 +48,8 @@ export function mapCreemProducts(products: CreemProduct[]): MappingResult {
         metadata: {
           _creemProductId: p.id,
         },
-        stripeProductId: p.id, // reuse field for source tracking
-        stripePriceIds: [p.id],
+        sourceProductId: p.id,
+        sourcePriceIds: [p.id],
       });
     } else {
       // Subscription
@@ -58,13 +58,13 @@ export function mapCreemProducts(products: CreemProduct[]): MappingResult {
       if (!billingPeriod) {
         if (p.billingPeriod === "every-six-months") {
           skipped.push({
-            stripeId: p.id,
-            stripeName: p.name,
+            sourceProductId: p.id,
+            sourceProductName: p.name,
             reason: "Unsupported billing period: every 6 months",
           });
           warnings.push({
-            stripeProductId: p.id,
-            stripeProductName: p.name,
+            sourceProductId: p.id,
+            sourceProductName: p.name,
             message: "Skipped: every-six-months not supported by Pancake",
             severity: "warn",
           });
@@ -84,8 +84,8 @@ export function mapCreemProducts(products: CreemProduct[]): MappingResult {
         metadata: {
           _creemProductId: p.id,
         },
-        stripeProductId: p.id,
-        stripePriceIds: [p.id],
+        sourceProductId: p.id,
+        sourcePriceIds: [p.id],
       });
     }
   }

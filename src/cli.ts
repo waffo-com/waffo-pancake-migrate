@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import { stripeCommand } from "./commands/stripe.js";
+import { dodoCommand } from "./commands/dodo.js";
 import { creemCommand } from "./commands/creem.js";
 
 export function createCli(): Command {
@@ -12,21 +13,16 @@ export function createCli(): Command {
 
   program.addCommand(stripeCommand());
   program.addCommand(creemCommand());
+  program.addCommand(dodoCommand());
 
   // Default action: interactive source selection
   program.action(async () => {
     const { selectSource } = await import("./prompts/interactive.js");
     const source = await selectSource();
 
-    if (source === "stripe") {
-      await program.commands
-        .find((c) => c.name() === "stripe")!
-        .parseAsync([], { from: "user" });
-    } else {
-      await program.commands
-        .find((c) => c.name() === "creem")!
-        .parseAsync([], { from: "user" });
-    }
+    await program.commands
+      .find((c) => c.name() === source)!
+      .parseAsync([], { from: "user" });
   });
 
   return program;

@@ -10,7 +10,8 @@ export interface IntervalMappingUnsupported {
   reason: string;
 }
 
-export type IntervalMapping = IntervalMappingResult | IntervalMappingUnsupported;
+export type IntervalMapping =
+  IntervalMappingResult | IntervalMappingUnsupported;
 
 export function mapInterval(
   interval: string,

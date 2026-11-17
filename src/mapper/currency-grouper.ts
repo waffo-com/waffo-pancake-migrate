@@ -46,17 +46,14 @@ export function groupPricesByCurrency(
   stripeProductName: string
 ): GroupingResult {
   const warnings: MappingWarning[] = [];
-  const groupMap = new Map<
-    string,
-    { prices: Stripe.Price[]; label: string }
-  >();
+  const groupMap = new Map<string, { prices: Stripe.Price[]; label: string }>();
 
   for (const price of prices) {
     // Skip tiered pricing
     if (price.billing_scheme === "tiered") {
       warnings.push({
-        stripeProductId,
-        stripeProductName,
+        sourceProductId: stripeProductId,
+        sourceProductName: stripeProductName,
         message: `Skipped tiered price ${price.id}`,
         severity: "warn",
       });
@@ -66,8 +63,8 @@ export function groupPricesByCurrency(
     // Skip null amounts
     if (price.unit_amount == null) {
       warnings.push({
-        stripeProductId,
-        stripeProductName,
+        sourceProductId: stripeProductId,
+        sourceProductName: stripeProductName,
         message: `Skipped price ${price.id} (no unit_amount)`,
         severity: "warn",
       });
@@ -82,8 +79,8 @@ export function groupPricesByCurrency(
       );
       if (!mapping.supported) {
         warnings.push({
-          stripeProductId,
-          stripeProductName,
+          sourceProductId: stripeProductId,
+          sourceProductName: stripeProductName,
           message: mapping.reason,
           severity: "warn",
         });
@@ -112,8 +109,8 @@ export function groupPricesByCurrency(
 
       if (pancakePrices[currency]) {
         warnings.push({
-          stripeProductId,
-          stripeProductName,
+          sourceProductId: stripeProductId,
+          sourceProductName: stripeProductName,
           message: `Duplicate ${currency} price in ${label} group, using first`,
           severity: "warn",
         });

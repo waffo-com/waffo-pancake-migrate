@@ -1,11 +1,12 @@
 import { input, password, select } from "@inquirer/prompts";
-import ora from "ora";
-import { listPancakeStores, createPancakeStore } from "../pancake/creator.js";
-import { log } from "../utils/logger.js";
+import { spinner as ora } from "../utils/spinner.js";
+import { listPancakeStores } from "../pancake/creator.js";
+import { registerSecret } from "../utils/audit.js";
 import type {
   MigrationSource,
   StripeCommandOptions,
   CreemCommandOptions,
+  DodoCommandOptions,
   PancakeTaxCategory,
 } from "../utils/types.js";
 
@@ -27,6 +28,7 @@ export async function selectSource(): Promise<MigrationSource> {
     choices: [
       { name: "Stripe", value: "stripe" as const },
       { name: "Creem", value: "creem" as const },
+      { name: "Dodo Payments", value: "dodo" as const },
     ],
   })) as MigrationSource;
 }
@@ -41,12 +43,13 @@ async function resolvePancakeCredentials(partial: {
     partial.merchantId ??
     (await input({
       message: "Pancake Merchant ID (MER_...):",
-      validate: (val) => (val.startsWith("MER_") ? true : "Must start with MER_"),
+      validate: (val) =>
+        val.startsWith("MER_") ? true : "Must start with MER_",
     }));
 
   let privateKey =
     partial.privateKey ??
-    (await input({
+    (await password({
       message: "Pancake Private Key (file path or paste content):",
       validate: (val) => (val.length > 0 ? true : "Required"),
     }));
@@ -65,6 +68,7 @@ async function resolvePancakeCredentials(partial: {
     }
   }
 
+  registerSecret(privateKey);
   return { merchantId, privateKey };
 }
 
@@ -73,7 +77,7 @@ async function resolveStoreId(
   privateKey: string,
   partialStoreId?: string
 ): Promise<string> {
-  if (partialStoreId && partialStoreId !== "new") return partialStoreId;
+  if (partialStoreId) return partialStoreId;
 
   const storesSpinner = ora("Fetching stores from Pancake...").start();
   try {
@@ -95,20 +99,7 @@ async function resolveStoreId(
       default: stores.length > 0 ? stores[0].id : NEW_STORE_VALUE,
     });
 
-    if (selected === NEW_STORE_VALUE || partialStoreId === "new") {
-      const storeName = await input({
-        message: "New store name:",
-        validate: (val) =>
-          val.length > 0 && val.length <= 48
-            ? true
-            : "1-48 characters required",
-      });
-
-      const createSpinner = ora(`Creating store "${storeName}"...`).start();
-      const store = await createPancakeStore(merchantId, privateKey, storeName);
-      createSpinner.succeed(`Store created: ${store.name} (${store.id})`);
-      return store.id;
-    }
+    if (selected === NEW_STORE_VALUE) return "new";
 
     return selected;
   } catch (err) {
@@ -124,6 +115,8 @@ interface ResolvedStripeConfig {
   merchantId: string;
   privateKey: string;
   storeId: string;
+  storeName?: string;
+  storeCreationId?: string;
   taxCategory: PancakeTaxCategory;
   dryRun: boolean;
   yes: boolean;
@@ -145,11 +138,24 @@ export async function runInteractivePrompts(
       },
     }));
 
+  registerSecret(stripeKey);
+
   // 2. Pancake credentials
   const { merchantId, privateKey } = await resolvePancakeCredentials(partial);
 
   // 3. Store selection (create or existing)
   const storeId = await resolveStoreId(merchantId, privateKey, partial.storeId);
+  const storeName =
+    storeId === "new"
+      ? (partial.storeName ??
+        (await input({
+          message: "New store name:",
+          validate: (value) =>
+            value.trim().length > 0 && value.trim().length <= 48
+              ? true
+              : "1-48 characters required",
+        })))
+      : undefined;
 
   // 4. Tax category
   const taxCategory =
@@ -165,6 +171,8 @@ export async function runInteractivePrompts(
     merchantId,
     privateKey,
     storeId,
+    storeName,
+    storeCreationId: partial.storeCreationId,
     taxCategory,
     dryRun: partial.dryRun ?? false,
     yes: partial.yes ?? false,
@@ -178,6 +186,8 @@ interface ResolvedCreemConfig {
   merchantId: string;
   privateKey: string;
   storeId: string;
+  storeName?: string;
+  storeCreationId?: string;
   dryRun: boolean;
   yes: boolean;
 }
@@ -196,18 +206,79 @@ export async function runCreemInteractivePrompts(
       },
     }));
 
+  registerSecret(apiKey);
+
   // 2. Pancake credentials
   const { merchantId, privateKey } = await resolvePancakeCredentials(partial);
 
   // 3. Store selection (create or existing)
   const storeId = await resolveStoreId(merchantId, privateKey, partial.storeId);
+  const storeName =
+    storeId === "new"
+      ? (partial.storeName ??
+        (await input({
+          message: "New store name:",
+          validate: (value) =>
+            value.trim().length > 0 && value.trim().length <= 48
+              ? true
+              : "1-48 characters required",
+        })))
+      : undefined;
 
   return {
     apiKey,
     merchantId,
     privateKey,
     storeId,
+    storeName,
+    storeCreationId: partial.storeCreationId,
     dryRun: partial.dryRun ?? false,
     yes: partial.yes ?? false,
+  };
+}
+
+export async function runDodoSourcePrompts(partial: DodoCommandOptions) {
+  const environment =
+    partial.environment ??
+    (await select({
+      message: "Dodo environment:",
+      choices: [
+        { name: "Test", value: "test" as const },
+        { name: "Live", value: "live" as const },
+      ],
+    }));
+  const apiKey =
+    partial.apiKey ||
+    process.env.DODO_PAYMENTS_API_KEY ||
+    (await password({
+      message: "Dodo API key (Products Read):",
+      validate: (value) => value.trim().length > 0 || "Required",
+    }));
+  registerSecret(apiKey);
+  return { environment, apiKey };
+}
+
+export async function runDodoTargetPrompts(partial: DodoCommandOptions) {
+  const credentials = await resolvePancakeCredentials(partial);
+  const storeId = await resolveStoreId(
+    credentials.merchantId,
+    credentials.privateKey,
+    partial.storeId
+  );
+  const storeName =
+    storeId === "new"
+      ? (partial.storeName ??
+        (await input({
+          message: "New store name:",
+          validate: (value) =>
+            (value.trim().length > 0 && value.trim().length <= 48) ||
+            "1-48 characters required",
+        })))
+      : undefined;
+  return {
+    ...credentials,
+    storeId,
+    storeName,
+    storeCreationId: partial.storeCreationId,
   };
 }

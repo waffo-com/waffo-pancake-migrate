@@ -30,8 +30,8 @@ export function mapProducts(
     // Skip if no valid groups
     if (groups.length === 0) {
       skipped.push({
-        stripeId: product.id,
-        stripeName: product.name,
+        sourceProductId: product.id,
+        sourceProductName: product.name,
         reason: "No supported prices after filtering",
       });
       continue;
@@ -57,8 +57,8 @@ export function mapProducts(
           _stripeProductId: product.id,
           _stripePriceIds: group.stripePriceIds.join(","),
         },
-        stripeProductId: product.id,
-        stripePriceIds: group.stripePriceIds,
+        sourceProductId: product.id,
+        sourcePriceIds: group.stripePriceIds,
       });
     }
   }
