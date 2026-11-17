@@ -161,9 +161,10 @@ async function runLemonSqueezyMigration(
   const fetching = spinner("Fetching Lemon Squeezy stores...").start();
   const stores = await fetchLemonSqueezyStores(apiKey);
   // Keep the spinner from drawing over the store selection prompt.
-  if (!opts.lsStoreId && stores.length > 1) fetching.stop();
+  const pickingStore = !opts.lsStoreId && stores.length > 1;
+  if (pickingStore) fetching.stop();
   const store = await chooseStore(stores, opts.lsStoreId);
-  if (!fetching.isSpinning) fetching.start();
+  if (pickingStore) fetching.start();
   fetching.text = `Fetching products, variants, prices${opts.skipDiscounts ? "" : " and discounts"} of ${store.name}...`;
   const catalog = await fetchLemonSqueezyCatalog(apiKey, store, {
     discounts: !opts.skipDiscounts,
