@@ -26,6 +26,7 @@ import {
 } from "../src/stripe/fetcher.js";
 import { PassThrough } from "node:stream";
 import { createCli } from "../src/cli.js";
+import { ensureTaxAcknowledged } from "../src/utils/migration.js";
 
 const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
   .privateKey.export({ type: "pkcs8", format: "pem" })
@@ -511,7 +512,7 @@ test("Creem source logs actual versions, pages and counts without product payloa
     .map((line) => JSON.parse(line));
   const started = events.find((event) => event.event === "source.started");
   assert.equal(started.sdkVersion, "1.4.4");
-  assert.equal(started.toolVersion, "0.3.0");
+  assert.equal(started.toolVersion, "0.3.1");
   assert.ok(started.nodeVersion.startsWith("v"));
   assert.ok(
     events.some(
@@ -1844,7 +1845,8 @@ test("Lemon Squeezy discounts map to coupons with product limits, duration and r
       durationInPeriods: null,
       maxRedemptions: 50,
       redeemBy: "2099-01-01T00:00:00.000Z",
-      sourceProductIds: [],
+      // Store-wide discounts are scoped to the migrated products, never the whole target store.
+      sourceProductIds: ["variant:1000", "variant:2001", "variant:2002"],
     },
     {
       sourceDiscountId: "2",
@@ -1863,6 +1865,7 @@ test("Lemon Squeezy discounts map to coupons with product limits, duration and r
     [["DRAFT10", "Draft discount"]]
   );
   assert.match(warnings[0].message, /restarts at 50/);
+  assert.match(warnings[1].message, /Store-wide discount: limited to the 3 migrated/);
 });
 
 test("Lemon Squeezy discounts that cannot be expressed exactly are skipped with reasons", async () => {
@@ -1925,7 +1928,10 @@ test("Lemon Squeezy discounts that cannot be expressed exactly are skipped with 
       "Duplicate code",
     ]
   );
-  assert.equal(warnings.length, 0);
+  assert.deepEqual(
+    warnings.map((w) => w.message.startsWith("Store-wide discount")),
+    [true]
+  );
 });
 
 test("Lemon Squeezy ignores the hidden default variant that whole-product discounts link", async () => {
@@ -2162,7 +2168,11 @@ test("Lemon Squeezy real-command mock creates products then product-scoped coupo
     ["Synthetic ebook", "Synthetic SaaS - Monthly", "Synthetic SaaS - Yearly"]
   );
   assert.equal(coupons.length, 2);
-  assert.equal(coupons[0].productIds, undefined);
+  assert.deepEqual(
+    [...coupons[0].productIds].sort(),
+    created.map((p: any) => p.id).sort(),
+    "store-wide coupons are limited to the migrated products"
+  );
   assert.deepEqual(coupons[1].productIds, [created[1].id]);
   assert.equal(coupons[1].durationInPeriods, 3);
   assert.ok(
@@ -2209,4 +2219,76 @@ test("Lemon Squeezy coupon conflicts and read-back mismatches fail without false
   const unverified = events(log, "coupon.unverified");
   assert.equal(unverified.length, 1);
   assert.match(unverified[0].couponId, /^CPN_/);
+});
+
+test("tax acknowledgement: flag passes, scripts fail closed, terminals ask", async () => {
+  const error = "Review taxes, then pass --acknowledge-tax-semantics. No writes made.";
+  const asked: string[] = [];
+  const ask = (answer: boolean) => async (message: string) => {
+    asked.push(message);
+    return answer;
+  };
+  await ensureTaxAcknowledged("lemonsqueezy", true, error, { interactive: true, ask: ask(false) });
+  assert.equal(asked.length, 0, "the flag never prompts");
+  await assert.rejects(
+    ensureTaxAcknowledged("lemonsqueezy", undefined, error, { interactive: false, ask: ask(true) }),
+    { message: error }
+  );
+  assert.equal(asked.length, 0, "non-interactive runs never prompt");
+  await ensureTaxAcknowledged("dodo", undefined, error, { interactive: true, ask: ask(true) });
+  assert.equal(asked.length, 1);
+  assert.equal(
+    await ensureTaxAcknowledged("dodo", undefined, error, { interactive: true, ask: ask(false) }),
+    false,
+    "declining cancels like the final confirmation does"
+  );
+});
+
+test("Lemon Squeezy coupons: drafts-only hidden default, safe name truncation, nothing to scope to", async () => {
+  const catalog = await lsFetch({
+    catalog: [
+      ...lsCatalog,
+      {
+        id: "300",
+        name: "Unreleased",
+        description: "",
+        variants: [
+          { id: "3000", name: "Default", status: "pending", price: lsPrice() },
+          { id: "3001", name: "Pro", status: "draft", price: lsPrice() },
+        ],
+      },
+    ],
+    discounts: [
+      {
+        ...lsDiscounts[0],
+        id: "e",
+        code: "EBOOKPLUS",
+        name: "x".repeat(63) + "\u{1F389} sale",
+        is_limited_to_products: true,
+        is_limited_redemptions: false,
+        expires_at: null,
+        // Whole-product selection of the ebook and of a product whose other variant is a draft.
+        variants: ["1000", "3000"],
+      },
+    ],
+  });
+  const { products } = mapLemonSqueezyProducts(catalog);
+  const { coupons, skipped } = mapLemonSqueezyDiscounts(
+    catalog,
+    products,
+    Date.parse("2026-11-17")
+  );
+  assert.deepEqual(skipped, []);
+  assert.deepEqual(coupons[0].sourceProductIds, ["variant:1000"]);
+  assert.equal(coupons[0].name, "x".repeat(63), "never splits the emoji's surrogate pair");
+
+  const storeWide = {
+    ...catalog,
+    discounts: [{ ...catalog.discounts[0], is_limited_to_products: false, variantIds: [] }],
+  };
+  const none = mapLemonSqueezyDiscounts(storeWide, [], Date.parse("2026-11-17"));
+  assert.deepEqual(
+    none.skipped.map((s) => s.reason),
+    ["Applies to the whole store, but no products are migrated"]
+  );
 });

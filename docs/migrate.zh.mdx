@@ -1,9 +1,9 @@
 ---
 title: "迁移到 Waffo Pancake"
-description: "使用 pancake-migrate CLI 将你的产品、价格、Webhook 和品牌信息迁移到 Waffo Pancake"
+description: "使用 pancake-migrate CLI 将你的产品和价格（以及视来源而定的 Webhook、品牌信息或折扣码）迁移到 Waffo Pancake"
 ---
 
-已经在用 Stripe、Creem、Dodo Payments 或 Lemon Squeezy？[`@waffo/pancake-migrate`](https://www.npmjs.com/package/@waffo/pancake-migrate) CLI 会把你的产品、价格、Webhook 和品牌信息复制到 Waffo Pancake 店铺——无需手动重新录入。
+已经在用 Stripe、Creem、Dodo Payments 或 Lemon Squeezy？[`@waffo/pancake-migrate`](https://www.npmjs.com/package/@waffo/pancake-migrate) CLI 会把你的产品和价格复制到 Waffo Pancake 店铺（Stripe 另含 Webhook 和品牌信息，Lemon Squeezy 另含折扣码）——无需手动重新录入。
 
 <Note>
 迁移会迁移你的**商品目录和设置**，而非实时计费。活跃订阅、客户和支付方式仍保留在原处——参见 [哪些内容*不会*迁移](#what-does-not-migrate)，了解原因及对应处理方式。
@@ -35,7 +35,7 @@ description: "使用 pancake-migrate CLI 将你的产品、价格、Webhook 和�
 3. **你的源平台密钥**——Stripe Secret Key（`sk_test_...` / `sk_live_...`）、Creem API Key（`creem_test_...` / `creem_...`）、Dodo Payments API Key 或 Lemon Squeezy API Key。
 
 <Warning>
-迁移会在你的密钥所对应的目标环境（test 还是 live）中**创建**产品。请始终先用 `--dry-run` 预览将要创建的确切内容。
+无论读取的是来源平台的 test 还是 live 数据，迁移都会在你的 Pancake 店铺中**创建**未发布的测试版本产品。请始终先用 `--dry-run` 预览将要创建的确切内容。
 </Warning>
 
 ## 最快路径：交互模式
@@ -57,13 +57,13 @@ npx @waffo/pancake-migrate
     在创建任何内容之前，准确查看将要迁移的内容。
   </Step>
   <Step title="迁移">
-    产品、价格、图片、Webhook 和品牌信息将在你的店铺中创建。
+    产品和价格将在你的店铺中创建；Stripe 另含 Webhook 和品牌信息，Lemon Squeezy 另含折扣码。迁移 Lemon Squeezy，或 Dodo 价格含税 / 未指定税务时，会先请你确认已审阅目标税务行为。
   </Step>
 </Steps>
 
 ## 脚本化迁移
 
-如果你更倾向于把所有内容作为 flag 传入（用于 CI，或重复执行），请使用按来源划分的子命令。
+如果你更倾向于把所有内容作为 flag 传入（用于 CI，或重复执行），请使用按来源划分的子命令。无终端（CI）运行时加 `--yes` 跳过确认提示。
 
 ### 从 Stripe 迁移
 
@@ -97,6 +97,7 @@ npx @waffo/pancake-migrate stripe \
   --merchant-id MER_xxx \
   --private-key ./private.pem \
   --store-id new \
+  --store-name "My store" \
   --tax-category saas
 ```
 
@@ -114,6 +115,7 @@ npx @waffo/pancake-migrate stripe ... --skip-webhooks --skip-branding
 | `--merchant-id <id>` | Pancake Merchant ID（`MER_...`） |
 | `--private-key <path>` | Pancake API 私钥文件的路径，或原始密钥内容 |
 | `--store-id <id>` | 目标 Store ID（`STO_...`），或 `new` 以创建一个 |
+| `--store-name <name>` | 新店铺名称（与 `--store-id new` 一起使用时必填） |
 | `--tax-category <cat>` | 默认税务分类：`saas`、`digital_goods`、`software`、`ebook`、`online_course`、`consulting`、`professional_service` |
 | `--dry-run` | 仅预览，不创建任何内容 |
 | `--yes` | 跳过确认提示 |
@@ -150,6 +152,7 @@ npx @waffo/pancake-migrate creem \
 | `--merchant-id <id>` | Pancake Merchant ID（`MER_...`） |
 | `--private-key <path>` | Pancake API 私钥文件的路径，或原始密钥内容 |
 | `--store-id <id>` | 目标 Store ID（`STO_...`），或 `new` 以创建一个 |
+| `--store-name <name>` | 新店铺名称（与 `--store-id new` 一起使用时必填） |
 | `--dry-run` | 仅预览，不创建任何内容 |
 | `--yes` | 跳过确认提示 |
 
@@ -161,7 +164,17 @@ npx @waffo/pancake-migrate creem \
 npx @waffo/pancake-migrate dodo --environment test --dry-run
 ```
 
-实际迁移时添加 `--merchant-id MER_xxx --private-key ./private.pem --store-id STO_xxx`，检查预览并确认后才写入。`--store-id new --store-name "My store"` 可在确认后创建店铺。读取 Dodo 生产商品时显式使用 `--environment live`，不会根据密钥前缀推断环境。含税或未指定税务语义的价格需审阅目标行为并使用 `--acknowledge-tax-semantics`；该参数不会替 Waffo 配置含税行为。
+实际迁移时去掉 `--dry-run`，并加上 Pancake 凭据：
+
+```bash
+npx @waffo/pancake-migrate dodo --environment test \
+  --merchant-id MER_xxx \
+  --private-key ./private.pem \
+  --store-id STO_xxx \
+  --acknowledge-tax-semantics
+```
+
+价格含税或未指定税务时需要 `--acknowledge-tax-semantics`：它表示你已审阅目标税务行为，不会在 Waffo 中配置税务。在终端中运行时，也可以不加该参数，改为在提示时确认。无终端（CI）运行时还需加 `--yes` 跳过最终确认；`--yes` 不能代替税务确认。`--store-id new --store-name "My store"` 可在确认后创建店铺。读取 Dodo 生产商品时显式使用 `--environment live`，不会根据密钥前缀推断环境。
 
 ### 从 Lemon Squeezy 迁移
 
@@ -171,7 +184,17 @@ npx @waffo/pancake-migrate dodo --environment test --dry-run
 npx @waffo/pancake-migrate lemonsqueezy --dry-run
 ```
 
-实际迁移时添加 `--merchant-id MER_xxx --private-key ./private.pem --store-id STO_xxx --acknowledge-tax-semantics`。Lemon Squeezy API 不返回价格是否含税，该参数表示你已审阅目标税务行为，不会替 Waffo 配置含税。key 能访问多个店铺时添加 `--ls-store-id <id>`；只迁商品可加 `--skip-discounts`。
+实际迁移时去掉 `--dry-run`，并加上 Pancake 凭据：
+
+```bash
+npx @waffo/pancake-migrate lemonsqueezy \
+  --merchant-id MER_xxx \
+  --private-key ./private.pem \
+  --store-id STO_xxx \
+  --acknowledge-tax-semantics
+```
+
+Lemon Squeezy API 不返回价格是否含税，`--acknowledge-tax-semantics` 表示你已审阅目标税务行为，不会在 Waffo 中配置税务。在终端中运行时，也可以不加该参数，改为在提示时确认。无终端（CI）运行时还需加 `--yes` 跳过最终确认；`--yes` 不能代替税务确认。key 能访问多个店铺时添加 `--ls-store-id <id>`；只迁商品可加 `--skip-discounts`。
 
 ## 哪些内容会迁移
 
@@ -197,25 +220,26 @@ npx @waffo/pancake-migrate lemonsqueezy --dry-run
 
 | 数据 | 是否迁移 |
 |---|---|
-| Products + Prices | 会——未归档、固定价格的一次性商品和订阅，金额按币种 ISO 最小单位换算 |
+| Products + Prices | 会——未归档、固定价格的一次性商品和订阅，金额由币种 ISO 最小单位换算 |
 | Billing periods | 会——`payment_frequency_*` 的周、月、季度、年（不使用 `subscription_period_*`） |
 | Tax categories | 会——`saas`→`saas`、`digital_products`→`digital_goods`、`e_book`→`ebook`、`edtech`→`online_course` |
-| ID 对照 | 来源 ID、税务及订阅时长设置保存在 metadata，并输出 Dodo → Waffo ID 对照 |
-| 环境 | 显式指定——`--environment test` 或 `--environment live` |
+| ID 对照 | 来源 ID 和税务设置保存在 metadata，并输出 Dodo → Waffo ID 对照 |
+| 订阅总时长 | 只保存在 metadata——Waffo 订阅不会在 Dodo 的结束日期终止 |
+| 来源环境 | 显式指定——`--environment test` 或 `--environment live`；两种情况下产品都创建为未发布的测试版本 |
 
-以下内容会明确跳过并说明原因（退出码 1）：其他价格、周期和税类，折扣、试用、自定金额、本地化 / 购买力平价价格及附加项。Webhook、品牌和积分履约不在本次范围内。
+以下内容会明确跳过并说明原因（退出码 1，`--dry-run` 也一样）：其他价格、周期和税类，折扣、试用、自定金额、本地化 / 购买力平价价格及附加项。Webhook、品牌和积分履约不在本次范围内。
 
 ### 从 Lemon Squeezy 迁移
 
 | 数据 | 是否迁移 |
 |---|---|
-| Products + Prices | 会——每个可售 variant 生成一个商品（`商品名 - Variant 名`），使用当前价格和店铺币种；HTML 描述转为纯文本 |
+| Products + Prices | 会——每个可售 variant 生成一个商品，命名为 `商品名 - Variant 名`（没有 variant 的商品只用商品名）；使用当前价格和店铺币种；HTML 描述转为纯文本 |
 | Billing periods | 会——1 周→`weekly`、1 月→`monthly`、3 月→`quarterly`、12 月或 1 年→`yearly` |
 | Tax categories | 会——`eservice`→`digital_goods`、`ebook`→`ebook`、`saas`→`saas` |
-| 折扣码 | 会——迁为同码的 Pancake 优惠券：百分比或固定金额、once / repeating / forever、兑换次数上限、过期时间、适用商品。在商品之后创建并回读校验；已用兑换次数从零开始计 |
-| 环境 | 由 key 决定——test mode 的 key 读测试数据 |
+| 折扣码 | 会——迁为同码（统一转为大写）的 Pancake 优惠券：百分比或固定金额、once / repeating / forever、兑换次数上限、过期时间、适用商品。全店折扣只作用于本次迁移的商品，不包括目标店铺中已有的商品。在商品之后、于你的 Pancake API key 所属环境中创建，并回读校验；已用兑换次数从零开始计 |
+| 来源环境 | 由 key 决定——test mode 的 key 读测试数据；两种情况下产品都创建为未发布的测试版本 |
 
-以下内容会明确跳过并说明原因（退出码 1）：草稿商品、variant 和折扣；自定金额、免费 lead magnet、阶梯 / 打包 / 用量计费、开通费、免费试用和其他计费周期；已过期或尚未开始的折扣、超过 32 个字符的码、适用于未迁移 variant 的折扣，以及作用于非月付套餐的 repeating 折扣（Pancake 按计费周期计数，不按月）。License Key 和文件下载不在本次范围内。
+以下内容会明确跳过并说明原因（退出码 1，`--dry-run` 也一样）：草稿商品、variant 和折扣；没有可售 variant 的商品、税类无法映射的 variant 和免费 variant；自定金额、免费 lead magnet、阶梯 / 打包 / 用量计费、开通费、免费试用和其他计费周期；已过期或尚未开始的折扣、不是 3–32 位字母、数字或连字符的码、重复的码（不区分大小写）、适用于未迁移 variant 的折扣，以及作用于非月付套餐的 repeating 折扣（Pancake 按计费周期计数，不按月）。License Key 和文件下载不在本次范围内。
 
 ## 哪些内容*不会*迁移 {#what-does-not-migrate}
 
@@ -226,7 +250,7 @@ npx @waffo/pancake-migrate lemonsqueezy --dry-run
 | 活跃订阅 | 订阅是与客户银行之间的实时计费授权，无法在不同支付处理方之间复制 | 现有订阅者通过 Waffo Pancake [结账](/zh/guides/checkout-session) 重新订阅。过渡期内并行运行新旧支付处理方。 |
 | 客户数据 | 在首次购买时自动创建 | 无需处理——客户会在其首次 Pancake 支付时创建 |
 | 支付方式 | 出于 PCI 合规要求，卡数据绝不离开原支付处理方 | 客户在结账时重新输入支付信息 |
-| 优惠券与促销码 | 仅从 Lemon Squeezy 迁移（见上文），Pancake 原生支持优惠券与促销码 | 其他平台的优惠券请在 Pancake 中重新创建 —— 见[优惠与促销](/zh/guides/discounts) |
+| 优惠券与促销码 | 仅从 Lemon Squeezy 迁移（见上文），Pancake 原生支持优惠券与促销码 | 其他平台的优惠券请在 Pancake 中重新创建——见[优惠与促销](/zh/guides/discounts) |
 | 结账主题颜色 | Stripe 不通过 API 暴露这些信息 | 在 [Dashboard → Settings → Checkout](https://pancake.waffo.ai/merchant/dashboard) 中设置 |
 
 ## 迁移之后
@@ -236,7 +260,7 @@ npx @waffo/pancake-migrate lemonsqueezy --dry-run
     打开 **Dashboard → Products**，确认价格、计费周期和图片都正确迁移过来了。
   </Step>
   <Step title="发布到生产环境">
-    产品会落在你的密钥所对应的环境中。如果你迁移到了 test，请对每个产品执行 [发布](/zh/integrate/skill) 以上线。
+    迁移的产品是未发布的测试版本。请对每个产品执行 [发布](/zh/integrate/skill) 以上线。
   </Step>
   <Step title="接入结账">
     将你的应用指向 Waffo Pancake [结账会话](/zh/guides/checkout-session) 和 [Webhook](/zh/guides/webhooks)。

@@ -1,9 +1,9 @@
 ---
 title: "Waffo Pancake への移行"
-description: "pancake-migrate CLI で商品・価格・Webhook・ブランディングを Waffo Pancake に移行"
+description: "pancake-migrate CLI で商品・価格（移行元により Webhook・ブランディング・割引コードも）を Waffo Pancake に移行"
 ---
 
-すでに Stripe、Creem、Dodo Payments、Lemon Squeezy を運用していますか？ [`@waffo/pancake-migrate`](https://www.npmjs.com/package/@waffo/pancake-migrate) CLI は、商品・価格・Webhook・ブランディングを Waffo Pancake ストアにコピーします。手入力での再登録は不要です。
+すでに Stripe、Creem、Dodo Payments、Lemon Squeezy を運用していますか？ [`@waffo/pancake-migrate`](https://www.npmjs.com/package/@waffo/pancake-migrate) CLI は、商品と価格を Waffo Pancake ストアにコピーします（Stripe からは Webhook とブランディング、Lemon Squeezy からは割引コードも）。手入力での再登録は不要です。
 
 <Note>
 移行されるのは**カタログと設定**であり、稼働中の課金ではありません。アクティブなサブスクリプション・顧客・支払い方法はそのままの場所に残ります。理由と対処については [移行されないもの](#what-does-not-migrate) を参照してください。
@@ -35,7 +35,7 @@ description: "pancake-migrate CLI で商品・価格・Webhook・ブランディ
 3. **移行元プラットフォームのキー** — Stripe Secret Key（`sk_test_...` / `sk_live_...`）、Creem API Key（`creem_test_...` / `creem_...`）、Dodo Payments API キー、または Lemon Squeezy API キー。
 
 <Warning>
-移行は、キーが示す対象環境（test と live）に商品を**作成**します。何が作成されるかを正確にプレビューするため、必ず最初に `--dry-run` を実行してください。
+移行元の test / live どちらのデータを読む場合でも、移行は Pancake ストアに未公開のテスト版として商品を**作成**します。何が作成されるかを正確にプレビューするため、必ず最初に `--dry-run` を実行してください。
 </Warning>
 
 ## 最短ルート: インタラクティブモード
@@ -57,13 +57,13 @@ npx @waffo/pancake-migrate
     何かが作成される前に、移行される内容を正確に確認します。
   </Step>
   <Step title="移行">
-    商品・価格・画像・Webhook・ブランディングがストアに作成されます。
+    商品と価格がストアに作成されます。Stripe からは Webhook とブランディング、Lemon Squeezy からは割引コードも作成されます。Lemon Squeezy と、税込または税設定が未指定の Dodo 価格では、先に移行先の税の扱いを確認したことを承認します。
   </Step>
 </Steps>
 
 ## スクリプトによる移行
 
-すべてをフラグで渡したい場合（CI や実行の繰り返し向け）は、移行元ごとのサブコマンドを使います。
+すべてをフラグで渡したい場合（CI や実行の繰り返し向け）は、移行元ごとのサブコマンドを使います。ターミナルのない環境（CI など）では、確認プロンプトを省略する `--yes` を追加します。
 
 ### Stripe から
 
@@ -97,6 +97,7 @@ npx @waffo/pancake-migrate stripe \
   --merchant-id MER_xxx \
   --private-key ./private.pem \
   --store-id new \
+  --store-name "My store" \
   --tax-category saas
 ```
 
@@ -114,6 +115,7 @@ npx @waffo/pancake-migrate stripe ... --skip-webhooks --skip-branding
 | `--merchant-id <id>` | Pancake Merchant ID（`MER_...`） |
 | `--private-key <path>` | Pancake API 秘密鍵ファイルへのパス、または生のキー内容 |
 | `--store-id <id>` | 移行先 Store ID（`STO_...`）、または `new` で新規作成 |
+| `--store-name <name>` | 新規ストアの名前（`--store-id new` の場合は必須） |
 | `--tax-category <cat>` | デフォルトの税カテゴリ: `saas`、`digital_goods`、`software`、`ebook`、`online_course`、`consulting`、`professional_service` |
 | `--dry-run` | 何も作成せずにプレビュー |
 | `--yes` | 確認プロンプトをスキップ |
@@ -150,6 +152,7 @@ npx @waffo/pancake-migrate creem \
 | `--merchant-id <id>` | Pancake Merchant ID（`MER_...`） |
 | `--private-key <path>` | Pancake API 秘密鍵ファイルへのパス、または生のキー内容 |
 | `--store-id <id>` | 移行先 Store ID（`STO_...`）、または `new` で新規作成 |
+| `--store-name <name>` | 新規ストアの名前（`--store-id new` の場合は必須） |
 | `--dry-run` | 何も作成せずにプレビュー |
 | `--yes` | 確認プロンプトをスキップ |
 
@@ -161,7 +164,17 @@ npx @waffo/pancake-migrate creem \
 npx @waffo/pancake-migrate dodo --environment test --dry-run
 ```
 
-書き込む場合は `--merchant-id MER_xxx --private-key ./private.pem --store-id STO_xxx` を追加し、プレビューを確認して承認します。`--store-id new --store-name "My store"` で承認後にストアを作成できます。本番の Dodo 商品を読む場合は `--environment live` を明示します。キーの接頭辞から環境を推測しません。税込または未指定の税設定では、移行先の動作を確認して `--acknowledge-tax-semantics` を指定します。このフラグは Waffo の税込設定を変更しません。
+書き込む場合は `--dry-run` を外し、Pancake の認証情報を追加します。
+
+```bash
+npx @waffo/pancake-migrate dodo --environment test \
+  --merchant-id MER_xxx \
+  --private-key ./private.pem \
+  --store-id STO_xxx \
+  --acknowledge-tax-semantics
+```
+
+税込または税設定が未指定の価格では `--acknowledge-tax-semantics` が必要です。移行先の税の扱いを確認したことを示すもので、Waffo の税設定は変更しません。ターミナルではプロンプトで承認することもできます。ターミナルのない環境（CI など）で実行する場合は、最終確認を省略する `--yes` も追加します。`--yes` は税の確認の代わりにはなりません。`--store-id new --store-name "My store"` で承認後にストアを作成できます。本番の Dodo 商品を読む場合は `--environment live` を明示します。キーの接頭辞から環境を推測しません。
 
 ### Lemon Squeezy から
 
@@ -171,7 +184,17 @@ npx @waffo/pancake-migrate dodo --environment test --dry-run
 npx @waffo/pancake-migrate lemonsqueezy --dry-run
 ```
 
-移行時は `--merchant-id MER_xxx --private-key ./private.pem --store-id STO_xxx --acknowledge-tax-semantics` を追加します。Lemon Squeezy API は価格が税込かどうかを返さないため、このフラグで移行先の税の扱いを確認したことを明示します。Waffo の税設定は変更しません。キーが複数のストアにアクセスできる場合は `--ls-store-id <id>`、商品のみ移行する場合は `--skip-discounts` を追加します。
+書き込む場合は `--dry-run` を外し、Pancake の認証情報を追加します。
+
+```bash
+npx @waffo/pancake-migrate lemonsqueezy \
+  --merchant-id MER_xxx \
+  --private-key ./private.pem \
+  --store-id STO_xxx \
+  --acknowledge-tax-semantics
+```
+
+Lemon Squeezy API は価格が税込かどうかを返さないため、`--acknowledge-tax-semantics` で移行先の税の扱いを確認したことを明示します。Waffo の税設定は変更しません。ターミナルではプロンプトで承認することもできます。ターミナルのない環境（CI など）で実行する場合は、最終確認を省略する `--yes` も追加します。`--yes` は税の確認の代わりにはなりません。キーが複数のストアにアクセスできる場合は `--ls-store-id <id>`、商品のみ移行する場合は `--skip-discounts` を追加します。
 
 ## 移行されるもの
 
@@ -200,22 +223,23 @@ npx @waffo/pancake-migrate lemonsqueezy --dry-run
 | Products + Prices | はい — 未アーカイブで固定価格の単発商品とサブスクリプション。金額は ISO 通貨の最小単位から換算 |
 | Billing periods | はい — `payment_frequency_*` の週・月・四半期・年（`subscription_period_*` は使用しません） |
 | Tax categories | はい — `saas`→`saas`、`digital_products`→`digital_goods`、`e_book`→`ebook`、`edtech`→`online_course` |
-| ID の対応 | 元の ID、税と期間の設定を metadata に保存し、Dodo → Waffo の ID 対応を出力 |
-| 環境 | 明示指定 — `--environment test` または `--environment live` |
+| ID の対応 | 元の ID と税の設定を metadata に保存し、Dodo → Waffo の ID 対応を出力 |
+| 契約期間 | metadata のみ — Waffo のサブスクリプションは Dodo の終了日では終了しません |
+| 移行元の環境 | 明示指定 — `--environment test` または `--environment live`。どちらでも商品は未公開のテスト版として作成 |
 
-次は理由付きでスキップされます（終了コード 1）: その他の価格・周期・税区分、割引、試用、自由価格、地域別 / 購買力平価価格、アドオン。Webhook、ブランド、クレジット付与は対象外です。
+次は理由付きでスキップされます（終了コード 1。`--dry-run` でも同様）: その他の価格・周期・税区分、割引、試用、任意価格、地域別 / 購買力平価価格、アドオン。Webhook、ブランド、クレジット付与は対象外です。
 
 ### Lemon Squeezy から
 
 | データ | 移行 |
 |---|---|
-| Products + Prices | はい — 販売可能なバリアントごとに 1 商品（`商品名 - バリアント名`）、現在の価格とストア通貨。HTML の説明はプレーンテキストに変換 |
+| Products + Prices | はい — 販売可能なバリアントごとに 1 商品、名前は `商品名 - バリアント名`（バリアントのない商品は商品名のみ）。ストア通貨での現在の価格。HTML の説明はプレーンテキストに変換 |
 | Billing periods | はい — 1 週→`weekly`、1 か月→`monthly`、3 か月→`quarterly`、12 か月または 1 年→`yearly` |
 | Tax categories | はい — `eservice`→`digital_goods`、`ebook`→`ebook`、`saas`→`saas` |
-| 割引コード | はい — 同じコードの Pancake クーポンとして作成: 割合または固定額、once / repeating / forever、利用上限、有効期限、対象商品。商品の後に作成し、読み戻しで検証。利用回数はゼロから数え直し |
-| 環境 | キーで決定 — テストモードのキーはテストデータを読みます |
+| 割引コード | はい — 同じコード（大文字で保存）の Pancake クーポンとして作成: 割合または固定額、once / repeating / forever、利用上限、有効期限、対象商品。ストア全体の割引は移行した商品のみに適用され、移行先ストアの既存商品には適用されません。商品の後に、使用する Pancake API キーの環境に作成し、読み戻しで検証。利用回数はゼロから数え直し |
+| 移行元の環境 | キーで決定 — テストモードのキーはテストデータを読みます。テスト / ライブどちらのキーでも商品は未公開のテスト版として作成 |
 
-次は理由付きでスキップされます（終了コード 1）: 下書きの商品・バリアント・割引、任意価格、無料のリードマグネット、段階 / パッケージ / 従量課金、初期費用、無料トライアル、その他の課金周期、期限切れまたは開始前の割引、32 文字を超えるコード、未移行バリアントに適用される割引、月額以外のプランに適用される repeating 割引（Pancake は月ではなく課金周期で数えます）。ライセンスキーとファイル配布は対象外です。
+次は理由付きでスキップされます（終了コード 1。`--dry-run` でも同様）: 下書きの商品・バリアント・割引、販売可能なバリアントのない商品、税コードを変換できないバリアント、無料のバリアント、任意価格、無料のリードマグネット、段階 / パッケージ / 従量課金、初期費用、無料トライアル、その他の課金周期、期限切れまたは開始前の割引、3〜32 文字の英数字とハイフン以外のコード、重複コード（大文字と小文字を区別しない）、未移行バリアントに適用される割引、月額以外のプランに適用される repeating 割引（Pancake は月ではなく課金周期で数えます）。ライセンスキーとファイル配布は対象外です。
 
 ## 移行されないもの {#what-does-not-migrate}
 
@@ -236,7 +260,7 @@ npx @waffo/pancake-migrate lemonsqueezy --dry-run
     **Dashboard → Products** を開き、価格・課金周期・画像が正しく移行されたか確認します。
   </Step>
   <Step title="本番に公開">
-    商品はキーが示す環境に作成されます。test に移行した場合は、各商品を [公開](/ja/integrate/skill) して本番稼働させます。
+    移行した商品は未公開のテスト版です。各商品を [公開](/ja/integrate/skill) して本番稼働させます。
   </Step>
   <Step title="チェックアウトを接続">
     アプリを Waffo Pancake の [チェックアウトセッション](/ja/guides/checkout-session) と [Webhook](/ja/guides/webhooks) に向けます。

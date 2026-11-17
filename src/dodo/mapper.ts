@@ -89,7 +89,7 @@ export function mapDodoProducts(source: DodoProduct[]): MappingResult {
       }
       if (price.tax_inclusive !== false) {
         warn(
-          `Tax-inclusive setting: ${price.tax_inclusive === true ? "true" : "unspecified"}. Preserved in metadata, not applied by Waffo; review destination tax behavior and pass --acknowledge-tax-semantics before writing.`
+          `Tax-inclusive setting: ${price.tax_inclusive === true ? "true" : "unspecified"}. Preserved in metadata, not applied by Waffo; review destination tax behavior and confirm before writing (--acknowledge-tax-semantics, or the prompt in a terminal).`
         );
       }
       if (

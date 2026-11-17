@@ -8,6 +8,7 @@ import {
   redact,
 } from "../utils/audit.js";
 import {
+  ensureTaxAcknowledged,
   prepareTarget,
   showTarget,
   finishMigration,
@@ -73,7 +74,8 @@ export function dodoCommand(): Command {
       opts.merchantId ||= undefined;
       opts.privateKey ||= undefined;
       opts.storeId ||= undefined;
-      registerSecret(opts.apiKey ?? process.env.DODO_PAYMENTS_API_KEY);
+      registerSecret(opts.apiKey);
+      registerSecret(process.env.DODO_PAYMENTS_API_KEY);
       registerSecret(opts.privateKey);
       try {
         log.info(`Audit log: ${startAudit(opts.logFile)}`);
@@ -100,7 +102,7 @@ export function dodoCommand(): Command {
 async function runDodoMigration(opts: DodoCommandOptions): Promise<void> {
   if (
     !process.stdin.isTTY &&
-    (!opts.environment || !(opts.apiKey ?? process.env.DODO_PAYMENTS_API_KEY))
+    (!opts.environment || !(opts.apiKey || process.env.DODO_PAYMENTS_API_KEY))
   ) {
     throw new Error(
       "Non-interactive Dodo migration requires --environment test|live and DODO_PAYMENTS_API_KEY (or --api-key)"
@@ -137,13 +139,14 @@ async function runDodoMigration(opts: DodoCommandOptions): Promise<void> {
     return;
   }
   if (
-    !opts.acknowledgeTaxSemantics &&
-    products.some((p) => p.metadata._dodoTaxInclusive !== false)
-  ) {
-    throw new Error(
+    products.some((p) => p.metadata._dodoTaxInclusive !== false) &&
+    !(await ensureTaxAcknowledged(
+      "dodo",
+      opts.acknowledgeTaxSemantics,
       "Review inclusive/unspecified Dodo tax settings and destination tax behavior, then pass --acknowledge-tax-semantics. No writes made."
-    );
-  }
+    ))
+  )
+    return;
   if (
     !process.stdin.isTTY &&
     (!opts.merchantId ||
@@ -217,5 +220,5 @@ async function runDodoMigration(opts: DodoCommandOptions): Promise<void> {
       storeId: target.storeId,
     });
   }
-  finishMigration(failed + skipped.length);
+  finishMigration(failed, skipped.length);
 }
