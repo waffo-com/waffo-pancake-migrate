@@ -24,7 +24,7 @@ description: "使用 pancake-migrate CLI 将你的产品和价格（以及视来
 | Webhook endpoint | 店铺 Webhook | Stripe 端点会连同 URL + 事件类型映射一起迁移。（CLI 不读取 Creem 的 Webhook。） |
 | Account branding | 店铺品牌信息 | Stripe 的客服邮箱 + 网站会迁移。 |
 | Tax behavior | `taxCategory` | Creem 的分类自动映射；Stripe 则通过 `--tax-category` 传入一个默认值。 |
-| Test / live keys | `test` / `production` | 根据你的密钥前缀自动识别（`sk_test_`→test，`sk_live_`→production）。 |
+| Test / live keys | `test` / `production` | 根据你的密钥前缀自动识别（`sk_test_`→test，`sk_live_`→production）。它决定读取哪个环境的 Stripe 数据、写入哪个 Webhook 设置；产品始终创建为未发布的测试版本。 |
 
 ## 开始之前
 
@@ -205,9 +205,9 @@ Lemon Squeezy API 不返回价格是否含税，`--acknowledge-tax-semantics` �
 |---|---|
 | Products + Prices | 会——多币种、图片、描述 |
 | Billing periods | 会——`week`→`weekly`、`month`→`monthly`、每 3 个月→`quarterly`、`year`→`yearly` |
-| Webhook endpoints | 会——URL + 事件类型映射。Pancake 每个环境只保存一个 Webhook URL：有多个 Stripe endpoint 时，在提示中选择一个或用 `--webhook-url` 指定，否则跳过 Webhook（退出码 1）。使用 `sk_live_` 密钥会替换店铺的正式环境 Webhook URL |
+| Webhook endpoints | 会——URL + 事件类型映射。Pancake 每个环境只保存一个 Webhook URL：URL 相同的 endpoint 会合并为一个并保留全部事件。有多个 URL 时，在提示中选择一个或用 `--webhook-url` 指定（其余的会列出但不迁移）；不选择则跳过 Webhook（退出码 1）。使用 `sk_live_` 密钥会替换店铺的正式环境 Webhook URL |
 | 店铺品牌信息 | 会——客服邮箱 + 网站 |
-| 环境 | 自动识别——`sk_test_`→test、`sk_live_`→production |
+| 环境 | 自动识别——`sk_test_`→test、`sk_live_`→production，作用于来源数据和 Webhook 设置；产品始终是未发布的测试版本 |
 
 ### 从 Creem 迁移
 

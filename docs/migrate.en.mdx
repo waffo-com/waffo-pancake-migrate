@@ -24,7 +24,7 @@ Before you run anything, here's how your existing setup lines up with Waffo Panc
 | Webhook endpoint | Store webhook | Stripe endpoints migrate with URL + event-type mapping. (Creem webhooks are not read by the CLI.) |
 | Account branding | Store branding | Stripe support email + website migrate. |
 | Tax behavior | `taxCategory` | Creem categories map automatically; for Stripe you pass one default via `--tax-category`. |
-| Test / live keys | `test` / `production` | Auto-detected from your key prefix (`sk_test_`→test, `sk_live_`→production). |
+| Test / live keys | `test` / `production` | Auto-detected from your key prefix (`sk_test_`→test, `sk_live_`→production). This decides which Stripe data is read and which webhook setting is written; products are always created as unpublished test versions. |
 
 ## Before you start
 
@@ -205,9 +205,9 @@ The Lemon Squeezy API does not say whether prices include tax, so `--acknowledge
 |---|---|
 | Products + Prices | Yes — multi-currency, images, descriptions |
 | Billing periods | Yes — `week`→`weekly`, `month`→`monthly`, every 3 months→`quarterly`, `year`→`yearly` |
-| Webhook endpoints | Yes — URL + event-type mapping. Pancake keeps one webhook URL per environment: with several Stripe endpoints, pick one at the prompt or with `--webhook-url`, otherwise webhooks are skipped (exit code 1). An `sk_live_` key replaces the store's production webhook URL |
+| Webhook endpoints | Yes — URL + event-type mapping. Pancake keeps one webhook URL per environment: endpoints that share a URL are merged with all their events. With several URLs, pick one at the prompt or with `--webhook-url` (the others are reported, not migrated); without a choice, webhooks are skipped (exit code 1). An `sk_live_` key replaces the store's production webhook URL |
 | Store branding | Yes — support email + website |
-| Environment | Auto-detected — `sk_test_`→test, `sk_live_`→production |
+| Environment | Auto-detected — `sk_test_`→test, `sk_live_`→production for the source data and the webhook setting. Products are always unpublished test versions |
 
 ### From Creem
 

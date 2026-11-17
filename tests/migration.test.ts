@@ -215,7 +215,11 @@ test("audit redacts credentials and excludes request bodies and headers", async 
   assert.match(text, /req-test/);
   assert.throws(() => startAudit(file), /EEXIST/);
 });
-function creemMock(options: Parameters<typeof mockApi>[0] = {}) {
+function creemMock(
+  options: Parameters<typeof mockApi>[0] = {},
+  extraItems: Record<string, unknown>[] = [],
+  includeBase = true
+) {
   const calls = mockApi(options);
   const pancakeFetch = globalThis.fetch;
   globalThis.fetch = async (url, init) => {
@@ -224,7 +228,7 @@ function creemMock(options: Parameters<typeof mockApi>[0] = {}) {
     return new Response(
       JSON.stringify({
         items: [
-          {
+          ...(includeBase ? [{
             id: "prod_source",
             mode: "prod",
             object: "product",
@@ -239,10 +243,11 @@ function creemMock(options: Parameters<typeof mockApi>[0] = {}) {
             tax_category: "digital-goods-service",
             created_at: "2026-01-01T00:00:00Z",
             updated_at: "2026-01-01T00:00:00Z",
-          },
+          }] : []),
+          ...extraItems,
         ],
         pagination: {
-          total_records: 1,
+          total_records: (includeBase ? 1 : 0) + extraItems.length,
           total_pages: 1,
           current_page: 1,
           next_page: null,
@@ -2384,4 +2389,53 @@ test("Creem: unmapped tax categories and billing periods are skipped, never subs
     result.skipped.map((s) => s.reason),
     ["Unmapped tax category: courses", "Unsupported billing period: every-week"]
   );
+});
+
+const sixMonthCreem = {
+  id: "prod_six",
+  mode: "prod",
+  object: "product",
+  name: "Half-year",
+  description: "",
+  price: 4990,
+  currency: "USD",
+  billing_type: "recurring",
+  billing_period: "every-six-months",
+  status: "active",
+  tax_mode: "exclusive",
+  tax_category: "saas",
+  created_at: "2026-01-01T00:00:00Z",
+  updated_at: "2026-01-01T00:00:00Z",
+};
+
+test("Creem: skipped products are shown and make the run incomplete, even when nothing maps", async () => {
+  const calls = creemMock({}, [sixMonthCreem], false);
+  await cli("creem-all-skipped");
+  assert.equal(calls.length, 0, "nothing to write");
+  assert.equal(process.exitCode, 1);
+});
+
+test("Creem: a partial migration reports its skips instead of complete success", async () => {
+  creemMock({}, [sixMonthCreem]);
+  const log = await cli("creem-partial");
+  assert.equal(process.exitCode, 1);
+  assert.match(log, /"event":"migration.finished"[^\n]*"failed":0[^\n]*"count":1/);
+});
+
+test("Stripe: endpoints sharing a URL become one webhook with all their events", async () => {
+  const updates: any[] = [];
+  const base = stripeWebhookMock(["https://a.example/hook", "https://a.example/hook"]);
+  const fetchWithEvents = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    const res = await fetchWithEvents(url, init);
+    if (!String(url).includes("api.stripe.com")) return res;
+    const body = await res.json();
+    body.data[1].enabled_events = ["customer.subscription.deleted"];
+    return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  await createCli().parseAsync(stripeWebhookArgs("stripe-same-url"), { from: "user" });
+  updates.push(...base);
+  assert.equal(updates.length, 1, "one update, not one per endpoint");
+  assert.deepEqual([...updates[0].testEvents].sort(), ["order.completed", "subscription.canceled"]);
+  assert.notEqual(process.exitCode, 1);
 });

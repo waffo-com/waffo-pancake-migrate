@@ -24,7 +24,7 @@ description: "pancake-migrate CLI で商品・価格（移行元により Webhoo
 | Webhook endpoint | ストア Webhook | Stripe のエンドポイントは URL + イベントタイプのマッピングとともに移行されます。（Creem の Webhook は CLI では読み取りません。） |
 | Account branding | ストアブランディング | Stripe のサポートメール + Web サイトが移行されます。 |
 | Tax behavior | `taxCategory` | Creem のカテゴリは自動的にマッピングされます。Stripe では `--tax-category` で 1 つのデフォルトを指定します。 |
-| Test / live keys | `test` / `production` | キーのプレフィックスから自動検出されます（`sk_test_`→test、`sk_live_`→production）。 |
+| Test / live keys | `test` / `production` | キーのプレフィックスから自動検出されます（`sk_test_`→test、`sk_live_`→production）。読み取る Stripe データと書き込む Webhook 設定が決まります。商品は常に未公開のテスト版として作成されます。 |
 
 ## 始める前に
 
@@ -205,9 +205,9 @@ Lemon Squeezy API は価格が税込かどうかを返さないため、`--ackno
 |---|---|
 | Products + Prices | はい — マルチ通貨、画像、説明 |
 | Billing periods | はい — `week`→`weekly`、`month`→`monthly`、3 か月ごと→`quarterly`、`year`→`yearly` |
-| Webhook endpoints | はい — URL + イベントタイプのマッピング。Pancake は環境ごとに Webhook URL を 1 つだけ保持します。Stripe のエンドポイントが複数ある場合は、プロンプトまたは `--webhook-url` で 1 つ選びます。選ばない場合 Webhook はスキップされます（終了コード 1）。`sk_live_` キーではストアの本番 Webhook URL が置き換えられます |
+| Webhook endpoints | はい — URL + イベントタイプのマッピング。Pancake は環境ごとに Webhook URL を 1 つだけ保持します。同じ URL のエンドポイントはすべてのイベントをまとめて 1 つにします。URL が複数ある場合は、プロンプトまたは `--webhook-url` で 1 つ選びます（他は一覧表示され、移行されません）。選ばない場合 Webhook はスキップされます（終了コード 1）。`sk_live_` キーではストアの本番 Webhook URL が置き換えられます |
 | ストアブランディング | はい — サポートメール + Web サイト |
-| Environment | 自動検出 — `sk_test_`→test、`sk_live_`→production |
+| Environment | 自動検出 — `sk_test_`→test、`sk_live_`→production。移行元データと Webhook 設定に適用。商品は常に未公開のテスト版 |
 
 ### Creem から
 

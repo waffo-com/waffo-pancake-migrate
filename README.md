@@ -49,6 +49,7 @@ npx @waffo/pancake-migrate stripe \
   --merchant-id MER_xxx \
   --private-key ./private.pem \
   --store-id new \
+  --store-name "My store" \
   --tax-category saas
 
 # Skip specific steps
@@ -319,7 +320,7 @@ References: [requests and pagination](https://docs.lemonsqueezy.com/api/getting-
 | `--yes` | Skip confirmation |
 | `--skip-products` | Skip product migration |
 | `--skip-webhooks` | Skip webhook migration |
-| `--webhook-url <url>` | Stripe endpoint to migrate when there are several; Pancake keeps one webhook URL per environment, so without a choice webhooks are skipped (exit 1). An `sk_live_` key writes the production webhook setting |
+| `--webhook-url <url>` | Stripe endpoint URL to migrate when there are several (or pick at the prompt). Pancake keeps one webhook URL per environment; endpoints sharing a URL are merged, and without a choice webhooks are skipped (exit 1). An `sk_live_` key writes the production webhook setting |
 | `--skip-branding` | Skip branding migration |
 
 ### Creem
